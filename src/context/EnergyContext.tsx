@@ -588,19 +588,25 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, []);
 
-  // 2. Realtime Background Poller: Keeps mobile and laptop synced continuously
+// 2. Realtime Multi-Device Poller (Syncs Mobile & Laptop Automatically)
   useEffect(() => {
     if (!syncReady) return;
     const timer = window.setInterval(async () => {
       const remote = await fetchSharedState();
       if (!remote) return;
-      if ((remote.version || 0) > lastSeenVersionRef.current) {
+
+      // जर सर्व्हरचे व्हर्जन वेगळे असेल किंवा रिडिंग्जची संख्या वाढली असेल, तर स्क्रीन अपडेट करा
+      const isNewVersion = (remote.version || 0) !== lastSeenVersionRef.current;
+      const isNewReadings = (remote.readings?.length || 0) !== readings.length;
+
+      if (isNewVersion || isNewReadings) {
         applySharedState(remote);
         setLastSyncedAt(new Date());
       }
-    }, 2500);
+    }, 2000);
+
     return () => window.clearInterval(timer);
-  }, [syncReady]);
+  }, [syncReady, readings.length]);
 
   const isAdmin = currentUser.role === 'admin';
   const isBlockIncharge = currentUser.role === 'block_incharge';
