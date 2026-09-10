@@ -173,13 +173,12 @@ const EnergyContext = createContext<EnergyContextType | undefined>(undefined);
 const STORAGE_KEY_PREFIX = 'voltwise_energy_';
 
 export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Theme state: dark, light, or system
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('voltwise_theme') as ThemeMode;
     if (saved && (saved === 'dark' || saved === 'light' || saved === 'system')) {
       return saved;
     }
-    return 'dark'; // default dark
+    return 'dark';
   });
 
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
@@ -226,7 +225,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setThemeState(newTheme);
   };
 
-  // Load from localStorage or defaults
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}users`);
     let list = INITIAL_USERS;
@@ -238,42 +236,18 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         console.error('Failed to parse saved users', e);
       }
     }
-
-    // User roles are display metadata only. Authentication is server-owned.
-    const migrated = list.map((u) => {
-      return u;
-    });
-
-    return migrated;
+    return list;
   });
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     return INITIAL_USERS.find((user) => user.role === 'viewer') || INITIAL_USERS[0];
   });
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return false;
-  });
-
-  useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const data = await response.json() as { user?: User };
-        if (data.user) {
-          setCurrentUser(data.user);
-          setIsAuthenticated(true);
-        }
-      })
-      .catch(() => {
-        setIsAuthenticated(false);
-      });
-  }, []);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const [blocks, setBlocks] = useState<Block[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}blocks`);
     const initial = saved ? JSON.parse(saved) : INITIAL_BLOCKS;
-    // Sanitize: remove any accidentally added E block
     return (initial as Block[]).filter(
       (b) =>
         b.name?.trim().toLowerCase() !== 'e block' &&
@@ -343,7 +317,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return saved ? JSON.parse(saved) : INITIAL_TARIFF;
   });
 
-  // Default 2 MSEB Blocks (User can manually rename them)
   const DEFAULT_MSEB_BLOCKS: MsebBlock[] = [
     {
       id: 'mseb-block-1',
@@ -408,7 +381,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     },
   };
 
-  // MSEB Separate States (completely isolated from plant blocks)
   const [msebBlocks, setMsebBlocks] = useState<MsebBlock[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}mseb_blocks`);
     return saved ? JSON.parse(saved) : DEFAULT_MSEB_BLOCKS;
@@ -420,9 +392,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Filter out pre-generated mock entries so user starts with empty/clean list
-          const userEntries = parsed.filter((r) => !r.id.startsWith('mseb-rd-init'));
-          return userEntries;
+          return parsed.filter((r) => !r.id.startsWith('mseb-rd-init'));
         }
       } catch (e) {
         console.error(e);
@@ -443,7 +413,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return DEFAULT_MSEB_TARIFFS;
   });
 
-  // Sync to local storage
   useEffect(() => {
     localStorage.setItem(
       `${STORAGE_KEY_PREFIX}users`,
@@ -500,7 +469,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const parsed = JSON.parse(saved);
       return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
     } catch (error) {
-      console.error('Failed to parse deleted notification ids', error);
       return [];
     }
   });
@@ -515,7 +483,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}deleted_notification_ids`, JSON.stringify(deletedNotificationIds));
   }, [deletedNotificationIds]);
 
-  // Check storage backend health to display live sync indicator
   useEffect(() => {
     let active = true;
     fetch('/api/health', { cache: 'no-store' })
@@ -614,32 +581,35 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (remote.notifications) setNotifications(remote.notifications);
   };
 
+  // Check auth and fetch remote cloud state immediately on app open
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    const initializeState = async () => {
+      try {
+        const authRes = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+        if (authRes.ok) {
+          const authData = await authRes.json();
+          if (authData?.user && !cancelled) {
+            setCurrentUser(authData.user);
+            setIsAuthenticated(true);
+          }
+        }
+      } catch (e) {}
+
       const remote = await fetchSharedState();
       if (cancelled) return;
       if (remote && ((remote.readings && remote.readings.length > 0) || (remote.version || 0) > 0 || remote.users?.length)) {
-        const localSnapshot: SharedCampusState = {
-          version: 0,
-          ...collectSharedState(),
-        };
-        applySharedState(overlaySharedState(localSnapshot, remote));
+        applySharedState(remote);
         setLastSyncedAt(new Date());
-      } else {
-        const seeded = await saveSharedState(getSavePayload());
-        if (seeded?.version) {
-          lastSeenVersionRef.current = seeded.version;
-          setLastSyncedAt(new Date());
-        }
       }
       setSyncReady(true);
-    })();
+    };
+
+    initializeState();
     return () => {
       cancelled = true;
     };
-    // Seed/hydrate once on mount from the shared campus store.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -655,9 +625,8 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           setLastSyncedAt(new Date());
         }
       });
-    }, 300);
+    }, 400);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     users,
     blocks,
@@ -677,26 +646,19 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     syncReady,
   ]);
 
+  // Background sync for real-time data across tabs and devices
   useEffect(() => {
     if (!syncReady) return;
     const timer = window.setInterval(async () => {
       const remote = await fetchSharedState();
       if (!remote) return;
       if ((remote.version || 0) <= lastSeenVersionRef.current) return;
-      const localSnapshot: SharedCampusState = {
-        version: lastSeenVersionRef.current,
-        ...sharedStateRef.current,
-      };
-      applySharedState(overlaySharedState(localSnapshot, remote));
+      applySharedState(remote);
       setLastSyncedAt(new Date());
     }, 2000);
     return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncReady]);
 
-  // The authenticated user comes from the server session, never from shared client state.
-
-  // Role permissions
   const isAdmin = currentUser.role === 'admin';
   const isBlockIncharge = currentUser.role === 'block_incharge';
   const isViewer = currentUser.role === 'viewer';
@@ -709,16 +671,16 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const canEnterReading = (blockId?: string) => {
     if (isAdmin) return true;
     if (isBlockIncharge) {
-      if (!blockId) return true; // Can enter for their assigned block
+      if (!blockId) return true;
       return currentUser.assignedBlockId === blockId;
     }
-    return false; // Viewer cannot enter reading
+    return false;
   };
 
   const canManageUsers = isAdmin;
   const canEditTariff = isAdmin;
 
-  // Auth functions
+  // Login function: Loads latest Postgres database state immediately upon login
   const login = async (username: string, pass?: string): Promise<boolean> => {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -727,12 +689,20 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       body: JSON.stringify({ username: username.trim(), password: (pass || '').trim() }),
     });
     if (!response.ok) return false;
-    const data = await response.json() as { user?: User };
+    const data = (await response.json()) as { user?: User };
     if (!data.user) return false;
     setCurrentUser(data.user);
     setIsAuthenticated(true);
-    const remote = await fetchSharedState();
-    if (remote) applySharedState(remote);
+
+    try {
+      const remote = await fetchSharedState();
+      if (remote) {
+        applySharedState(remote);
+        setLastSyncedAt(new Date());
+      }
+    } catch (e) {
+      console.error('Failed to sync state after login', e);
+    }
     return true;
   };
 
@@ -742,9 +712,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentUser(INITIAL_USERS.find((user) => user.role === 'viewer') || INITIAL_USERS[0]);
   };
 
-  // Role-based data isolation
-  // Admin & Viewer with ALL: full campus access across all blocks
-  // Block In-Charge: strictly filtered to their assigned block
   const visibleBlocks = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
       return blocks;
@@ -791,7 +758,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const updateDailyLimit = (blockId: string, dailyLimitUnits: number): boolean => {
     if (!isAdmin || !Number.isFinite(dailyLimitUnits) || dailyLimitUnits <= 0) {
-      console.warn('Unauthorized or invalid daily limit update');
       return false;
     }
     const now = new Date().toISOString();
@@ -820,7 +786,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const cleanRemark = remark.trim();
     const target = exceedances.find((item) => item.id === exceedanceId);
     if (!target || !cleanRemark || !canEnterReading(target.blockId)) {
-      console.warn('Unauthorized or invalid exceedance remark');
       return false;
     }
     const adminUser = users.find((user) => user.role === 'admin');
@@ -873,7 +838,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     )));
   };
 
-  // Each distinct set of readings is a separate immutable exceedance event.
   useEffect(() => {
     const unitsByBlockDay = new Map<string, number>();
     readings.forEach((reading) => {
@@ -914,7 +878,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           id: `notification-${id}`,
           userId: blocks.find((block) => block.id === blockId)?.inchargeId,
           type: 'daily_limit_exceeded',
-          exceedanceId: id,
+          exceedanceId,
           blockId,
           readingDate,
           title: 'Daily energy limit exceeded',
@@ -937,19 +901,12 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [readings, dailyLimits, deletedNotificationIds]);
 
   const addUser = (userData: Omit<User, 'id'> & { id?: string; password?: string }) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can add users');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const cleanId = userData.id?.trim() || `usr-${Date.now().toString(36)}`;
     if (users.some((user) => user.id === cleanId || user.username.toLowerCase() === userData.username.trim().toLowerCase())) {
-      console.warn('Cannot add user with a duplicate ID or login ID');
       return;
     }
-    if (userData.role === 'admin') {
-      console.warn('The protected administrator is the only admin account');
-      return;
-    }
+    if (userData.role === 'admin') return;
     const newUser: User = {
       ...userData,
       id: cleanId,
@@ -960,24 +917,14 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateUser = (id: string, updates: Partial<User> & { newId?: string }) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can edit users');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const targetId = updates.newId?.trim() || updates.id || id;
     const existing = users.find((user) => user.id === id);
-    if (!existing || existing.role === 'admin') {
-      console.warn('The protected administrator cannot be edited');
-      return;
-    }
+    if (!existing || existing.role === 'admin') return;
     if (users.some((user) => user.id !== id && (user.id === targetId || user.username.toLowerCase() === String(updates.username || existing.username).trim().toLowerCase()))) {
-      console.warn('Cannot update user to a duplicate ID or login ID');
       return;
     }
-    if (updates.role === 'admin') {
-      console.warn('The protected administrator is the only admin account');
-      return;
-    }
+    if (updates.role === 'admin') return;
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === id) {
@@ -987,7 +934,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       })
     );
 
-    // If ID changed, sync any block inchargeId pointing to this user
     if (targetId !== id) {
       setBlocks((prev) =>
         prev.map((b) => (b.inchargeId === id ? { ...b, inchargeId: targetId } : b))
@@ -999,7 +945,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Authority for Admin to assign ID, username, and password to each and every block
   const assignBlockCredentials = async (
     blockId: string,
     credentials: {
@@ -1012,24 +957,20 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   ): Promise<{ success: boolean; message: string }> => {
     if (currentUser.role !== 'admin') {
-      return Promise.resolve({ success: false, message: 'Only Administrator can assign credentials to blocks.' });
+      return { success: false, message: 'Only Administrator can assign credentials to blocks.' };
     }
 
     const targetBlock = blocks.find((b) => b.id === blockId);
     if (!targetBlock) {
-      return Promise.resolve({ success: false, message: 'Specified block does not exist.' });
+      return { success: false, message: 'Specified block does not exist.' };
     }
 
     const cleanUsername = credentials.username.trim();
     const cleanPassword = credentials.password.trim();
-    if (!cleanUsername) {
-      return Promise.resolve({ success: false, message: 'Username cannot be empty.' });
-    }
-    if (!cleanPassword) {
-      return Promise.resolve({ success: false, message: 'Password cannot be empty.' });
+    if (!cleanUsername || !cleanPassword) {
+      return { success: false, message: 'Username and Password cannot be empty.' };
     }
 
-    // Find existing incharge user by inchargeId or assignedBlockId
     const existingIncharge = users.find(
       (u) =>
         (targetBlock.inchargeId && u.id === targetBlock.inchargeId) ||
@@ -1039,17 +980,16 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const assignedId = credentials.userId?.trim() || existingIncharge?.id || `usr-incharge-${blockId.replace('block-', '')}`;
     const assignedName = credentials.name?.trim() || existingIncharge?.name || `${targetBlock.name} In-Charge`;
     const assignedPhone = credentials.phone?.trim() || existingIncharge?.phone || '+91 98111 22233';
-    const assignedDesignation = credentials.designation?.trim() || existingIncharge?.designation || `${targetBlock.name} In-Charge (${targetBlock.description || 'Facility'})`;
+    const assignedDesignation = credentials.designation?.trim() || existingIncharge?.designation || `${targetBlock.name} In-Charge`;
 
-    // Check if another distinct user already holds this username
     const usernameClash = users.find(
       (u) => u.username.toLowerCase() === cleanUsername.toLowerCase() && u.id !== existingIncharge?.id && u.id !== assignedId
     );
     if (usernameClash) {
-      return Promise.resolve({
+      return {
         success: false,
-        message: `Username "${cleanUsername}" is already assigned to "${usernameClash.name}" (@${usernameClash.username}). Please pick a unique username.`,
-      });
+        message: `Username "${cleanUsername}" is already taken. Please choose another username.`,
+      };
     }
 
     const nextUsers = existingIncharge
@@ -1072,94 +1012,41 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const nextBlocks = blocks.map((b) =>
       b.id === blockId ? { ...b, inchargeId: assignedId, inchargeName: assignedName } : b
     );
+
     const saved = await saveSharedState({
       ...sharedStateRef.current,
       users: nextUsers,
       blocks: nextBlocks,
     });
     if (!saved) {
-      return { success: false, message: 'Credentials could not be saved to the server. Please try again.' };
+      return { success: false, message: 'Credentials could not be saved to the database. Please try again.' };
     }
 
-    if (existingIncharge) {
-      // Update existing user credentials
-      setUsers((prev) =>
-        prev.map((u) => {
-          if (u.id === existingIncharge.id) {
-            return {
-              ...u,
-              id: assignedId,
-              username: cleanUsername,
-              password: cleanPassword,
-              passwordConfigured: true,
-              name: assignedName,
-              phone: assignedPhone,
-              designation: assignedDesignation,
-              assignedBlockId: blockId,
-            };
-          }
-          return u;
-        })
-      );
-    } else {
-      // Create new user for this block
-      const newUser: User = {
-        id: assignedId,
-        username: cleanUsername,
-        password: cleanPassword,
-        name: assignedName,
-        role: 'block_incharge',
-        assignedBlockId: blockId,
-        email: `${cleanUsername.toLowerCase()}@company.com`,
-        phone: assignedPhone,
-        department: `${targetBlock.name} Operations`,
-        designation: assignedDesignation,
-      };
-      setUsers((prev) => [...prev, newUser]);
-    }
+    setUsers(nextUsers);
+    setBlocks(nextBlocks);
 
-    // Update block with inchargeId and inchargeName
-    setBlocks((prev) =>
-      prev.map((b) =>
-        b.id === blockId
-          ? {
-              ...b,
-              inchargeId: assignedId,
-              inchargeName: assignedName,
-            }
-          : b
-      )
-    );
-
-    return Promise.resolve({
+    return {
       success: true,
-      message: `ID "${assignedId}", Username "${cleanUsername}", and Password successfully assigned to ${targetBlock.name}!`,
-    });
+      message: `Credentials successfully saved to database for ${targetBlock.name}!`,
+    };
   };
 
   const deleteUser = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can delete users');
-      return false;
-    }
-    if (users.length <= 1) return false;
+    if (currentUser.role !== 'admin' || users.length <= 1) return false;
     setUsers((prev) => prev.filter((u) => u.id !== id));
     setDeletedUserIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     void fetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
-    // Also clean up any block assigned to this incharge
     setBlocks((prev) =>
       prev.map((b) => (b.inchargeId === id ? { ...b, inchargeId: undefined, inchargeName: 'Unassigned' } : b))
     );
     if (currentUser.id === id) {
       const remaining = users.filter((u) => u.id !== id);
-      if (remaining.length > 0) {
-        setCurrentUser(remaining[0]);
-      }
+      if (remaining.length > 0) setCurrentUser(remaining[0]);
     }
     return true;
   };
 
-  // Add Meter Reading
+  // Add Reading with immediate cloud push
   const addReading = ({
     blockId,
     meterId,
@@ -1193,12 +1080,10 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const meterMultiplier = multiplier !== undefined && !isNaN(multiplier) && multiplier > 0 ? multiplier : (targetMeter?.multiplier || 1);
     const meterNumber = targetMeter?.meterNumber || 'MTR-001';
 
-    // Find previous reading for kWh
     let prev = 0;
     if (explicitPrev !== undefined && !isNaN(explicitPrev)) {
       prev = explicitPrev;
     } else {
-      // Find latest previous reading before or at this date
       const pastReadings = readings
         .filter((r) => r.meterId === meterId && r.readingDate <= readingDate)
         .sort((a, b) => b.readingDate.localeCompare(a.readingDate) || (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -1220,7 +1105,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const unitsConsumed = (currentReading - prev) * meterMultiplier;
 
-    // kVAh calculations if provided
     let prevKvahVal = explicitPrevKvah !== undefined ? explicitPrevKvah : 0;
     if (explicitPrevKvah === undefined && currentKvah !== undefined) {
       const pastKvah = readings
@@ -1232,8 +1116,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
 
     const kvahConsumed = currentKvah !== undefined ? Math.max(0, (currentKvah - prevKvahVal) * meterMultiplier) : undefined;
-    
-    // Auto compute power factor if both kWh and kVAh consumed are present
     let calculatedPf = powerFactor;
     if (currentKvah !== undefined && kvahConsumed && kvahConsumed > 0 && unitsConsumed > 0) {
       calculatedPf = Math.min(1.0, +(unitsConsumed / kvahConsumed).toFixed(3));
@@ -1262,9 +1144,20 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       createdAt: new Date().toISOString(),
     };
 
-    setReadings((prevList) => [newReading, ...prevList]);
+    const updatedReadings = [newReading, ...readings];
+    setReadings(updatedReadings);
 
-    // Update meter's last reading and multiplier
+    // Instant save directly to Neon Postgres
+    saveSharedState({
+      ...sharedStateRef.current,
+      readings: updatedReadings,
+    }).then((saved) => {
+      if (saved?.version) {
+        lastSeenVersionRef.current = saved.version;
+        setLastSyncedAt(new Date());
+      }
+    });
+
     setMeters((prevMeters) =>
       prevMeters.map((m) =>
         m.id === meterId
@@ -1309,8 +1202,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const createdReadings: MeterReading[] = [];
     let sumUnits = 0;
-
-    // Track latest readings per meter to update meter states
     const latestMeterUpdates = new Map<string, { date: string; value: number; multiplier?: number }>();
 
     for (let idx = 0; idx < readingsList.length; idx++) {
@@ -1354,14 +1245,19 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       };
 
       createdReadings.push(newReading);
-
       const existing = latestMeterUpdates.get(item.meterId);
       if (!existing || item.readingDate >= existing.date) {
         latestMeterUpdates.set(item.meterId, { date: item.readingDate, value: item.currentReading, multiplier: mult });
       }
     }
 
-    setReadings((prev) => [...createdReadings, ...prev]);
+    const updatedReadings = [...createdReadings, ...readings];
+    setReadings(updatedReadings);
+
+    saveSharedState({
+      ...sharedStateRef.current,
+      readings: updatedReadings,
+    });
 
     setMeters((prevMeters) =>
       prevMeters.map((m) => {
@@ -1390,19 +1286,26 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setDeletedReadingIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setReadings((prev) => {
       const updated = prev.filter((r) => r.id !== id);
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updated));
+      saveSharedState({
+        ...sharedStateRef.current,
+        readings: updated,
+        deletedReadingIds: [...deletedReadingIds, id],
+      });
       return updated;
     });
     return true;
   };
 
   const deleteAllReadings = () => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can wipe all readings');
-      return false;
-    }
-    setDeletedReadingIds((prev) => Array.from(new Set([...prev, ...readings.map((r) => r.id)])));
+    if (currentUser.role !== 'admin') return false;
+    const allIds = readings.map((r) => r.id);
+    setDeletedReadingIds((prev) => Array.from(new Set([...prev, ...allIds])));
     setReadings([]);
+    saveSharedState({
+      ...sharedStateRef.current,
+      readings: [],
+      deletedReadingIds: Array.from(new Set([...deletedReadingIds, ...allIds])),
+    });
     setMeters((prevMeters) =>
       prevMeters.map((m) => ({
         ...m,
@@ -1410,16 +1313,11 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         lastReadingValue: 0,
       }))
     );
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify([]));
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}readings`);
     return true;
   };
 
   const addMeter = (data: Omit<Meter, 'id' | 'lastReadingDate' | 'lastReadingValue'> & { initialReading: number; initialDate: string }) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can add meters');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const newMeter: Meter = {
       ...data,
       id: `mtr-${Date.now().toString(36)}`,
@@ -1430,28 +1328,19 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateMeter = (id: string, updates: Partial<Meter>) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can update meters');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     setMeters((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
   };
 
   const deleteMeter = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can delete meters');
-      return false;
-    }
+    if (currentUser.role !== 'admin') return false;
     setMeters((prev) => prev.filter((m) => m.id !== id));
     setReadings((prev) => prev.filter((r) => r.meterId !== id));
     return true;
   };
 
   const addBlock = (data: Omit<Block, 'id'>) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can add blocks');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     const newBlock: Block = {
       ...data,
       id: `block-${Date.now().toString(36)}`,
@@ -1460,18 +1349,12 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateBlock = (id: string, updates: Partial<Block>) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can update blocks');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
   };
 
   const deleteBlock = (id: string) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can delete blocks');
-      return false;
-    }
+    if (currentUser.role !== 'admin') return false;
     setBlocks((prev) => prev.filter((b) => b.id !== id));
     setMeters((prev) => prev.filter((m) => m.blockId !== id));
     setReadings((prev) => prev.filter((r) => r.blockId !== id));
@@ -1482,14 +1365,10 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateTariff = (newTariff: TariffConfig) => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can update tariff configuration');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     setTariff(newTariff);
   };
 
-  // Calculation & Invoicing
   const calculateBill = ({
     blockId,
     periodType,
@@ -1523,7 +1402,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       periodLabel = `Day (${referenceDate})`;
       filteredReadings = filteredReadings.filter((r) => r.readingDate === referenceDate);
     } else if (periodType === 'week') {
-      // 7 days leading to referenceDate
       const start = new Date(refDate);
       start.setDate(start.getDate() - 6);
       startDate = start.toISOString().split('T')[0];
@@ -1536,7 +1414,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       periodLabel = `${monthName}`;
       filteredReadings = filteredReadings.filter((r) => r.readingDate.startsWith(targetMonth));
     } else {
-      // year
       startDate = `${targetYear}-01-01`;
       endDate = `${targetYear}-12-31`;
       periodLabel = `Year ${targetYear}`;
@@ -1547,7 +1424,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const unitsConsumed = totalUnits;
     const energyCharges = +(unitsConsumed * tariff.baseRatePerUnit).toFixed(2);
     
-    // Fixed charge applied if units exist or readings exist for period
     let fixedCharges = unitsConsumed > 0 ? tariff.fixedChargesMonthly : 0;
     if (periodType === 'day') fixedCharges = +(fixedCharges / 30).toFixed(2);
     else if (periodType === 'week') fixedCharges = +((fixedCharges * 7) / 30).toFixed(2);
@@ -1559,7 +1435,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const totalBill = +(energyCharges + fixedCharges + taxesAndDuties).toFixed(2);
     const averageRatePerUnit = unitsConsumed > 0 ? +(totalBill / unitsConsumed).toFixed(2) : tariff.baseRatePerUnit;
-
     const blockName = effectiveBlockId && effectiveBlockId !== 'ALL' ? blocks.find((b) => b.id === effectiveBlockId)?.name || 'Block' : 'All Department Blocks';
 
     return {
@@ -1580,7 +1455,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   };
 
-  // Day Wise Graph Data (24-hour interval breakdown purely from actual entered day readings)
   const getDayWiseData = (blockId?: string, date = getTodayDateStr()) => {
     const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
       ? currentUser.assignedBlockId
@@ -1620,7 +1494,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   };
 
-  // Week Wise Graph Data (7 Days ending on referenceDate)
   const getWeekWiseData = (blockId?: string, referenceDate = getTodayDateStr()) => {
     const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
       ? currentUser.assignedBlockId
@@ -1628,7 +1501,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const daysName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const result: Array<{ day: string; date: string; units: number; cost: number }> = [];
-
     const ref = new Date(referenceDate);
 
     for (let i = 6; i >= 0; i--) {
@@ -1643,10 +1515,9 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
 
       const units = dayReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
-
       result.push({
         day: dayName,
-        date: dateStr.slice(5), // MM-DD
+        date: dateStr.slice(5),
         units,
         cost: +(units * tariff.baseRatePerUnit).toFixed(0),
       });
@@ -1655,7 +1526,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return result;
   };
 
-  // Month Wise Graph Data (W1, W2, W3, W4 of the reference month)
   const getMonthWiseData = (blockId?: string, referenceDate = getTodayDateStr()) => {
     const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
       ? currentUser.assignedBlockId
@@ -1685,7 +1555,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       });
 
       const units = wReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
-
       return {
         period: w.period,
         units,
@@ -1694,7 +1563,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   };
 
-  // Year Wise Graph Data (Jan - Dec of specified year)
   const getYearWiseData = (blockId?: string, year = getCurrentYear()) => {
     const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
       ? currentUser.assignedBlockId
@@ -1726,7 +1594,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   };
 
-  // Bill Comparison & MoM / YoY Insights (calculated purely from entered readings)
   const getBillComparison = (referenceDate = getTodayDateStr()) => {
     const past6Months = getPastNMonths(6, referenceDate);
 
@@ -1752,7 +1619,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const currentMonthData = monthlyList[monthlyList.length - 1] || { bill: 0, units: 0, month: 'Current', shortMonth: 'Current' };
     const prevMonthData = monthlyList[monthlyList.length - 2] || { bill: 0, units: 0, month: 'Previous', shortMonth: 'Previous' };
 
-    // Previous year same month calculation
     const [curYear, curMonth] = (referenceDate || getTodayDateStr()).split('-').map(Number);
     const prevYearMonthStr = `${curYear - 1}-${String(curMonth).padStart(2, '0')}`;
     const prevYearReadings = visibleReadings.filter((r) => r.readingDate.startsWith(prevYearMonthStr));
@@ -1796,10 +1662,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const resetToDefaults = () => {
-    if (currentUser.role !== 'admin') {
-      console.warn('Unauthorized: Only admin can reset system to defaults');
-      return;
-    }
+    if (currentUser.role !== 'admin') return;
     setUsers(INITIAL_USERS);
     setCurrentUser(INITIAL_USERS[0]);
     setBlocks(INITIAL_BLOCKS);
@@ -1831,7 +1694,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return JSON.stringify(data, null, 2);
   };
 
-  // MSEB Separate Methods
   const getMsebTariff = (blockId: string): MsebTariffConfig => {
     return (
       msebTariffs[blockId] ||
@@ -1856,7 +1718,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const updateMsebTariff = (newTariff: MsebTariffConfig) => {
-    // Update active or first block tariff
     const firstId = msebBlocks[0]?.id || 'mseb-block-1';
     updateMsebTariffForBlock(firstId, newTariff);
   };
@@ -1992,7 +1853,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const blockTariff = getMsebTariff(params.msebBlockId);
     const targetUnits = blockTariff.billingType === 'kvah' && unitsKvah !== undefined ? unitsKvah : unitsKwh;
     
-    // Marginal reading cost with block's specific rate structure
     const customRatePerUnit = (blockTariff.customCharges || [])
       .filter((c) => c.type === 'per_unit')
       .reduce((sum, c) => sum + c.value, 0);
@@ -2037,9 +1897,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const updated = prev.filter((r) => r.id !== id);
       try {
         localStorage.setItem(`${STORAGE_KEY_PREFIX}mseb_readings`, JSON.stringify(updated));
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) {}
       return updated;
     });
     return true;
@@ -2054,9 +1912,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const updated = blockId ? prev.filter((r) => r.msebBlockId !== blockId) : [];
       try {
         localStorage.setItem(`${STORAGE_KEY_PREFIX}mseb_readings`, JSON.stringify(updated));
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) {}
       return updated;
     });
   };
