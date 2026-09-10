@@ -55,7 +55,11 @@ function emptyState(): SharedCampusState {
 }
 
 async function ensureNeonTable() {
-  const sql = neon(process.env.DATABASE_URL as string);
+  let dbUrl = process.env.DATABASE_URL || '';
+  if (dbUrl && !dbUrl.includes('sslmode=')) {
+    dbUrl += dbUrl.includes('?') ? '&sslmode=require' : '?sslmode=require';
+  }
+  const sql = neon(dbUrl);
   await sql`
     CREATE TABLE IF NOT EXISTS campus_state (
       id TEXT PRIMARY KEY,
@@ -82,14 +86,18 @@ async function loadState(): Promise<SharedCampusState | null> {
   }
 
   if (storageKind() === 'neon') {
-    const sql = await ensureNeonTable();
-    const rows = (await sql`
-      SELECT version, payload FROM campus_state WHERE id = ${STATE_ID} LIMIT 1
-    `) as Array<{ version: number; payload: string }>;
-    if (!rows.length) return null;
-    const parsed = JSON.parse(rows[0].payload) as SharedCampusState;
-    parsed.version = Number(rows[0].version) || parsed.version || 0;
-    return normalizeUserCredentials(parsed);
+    try {
+      const sql = await ensureNeonTable();
+      const rows = (await sql`
+        SELECT version, payload FROM campus_state WHERE id = ${STATE_ID} LIMIT 1
+      `) as Array<{ version: number; payload: string }>;
+      if (!rows.length) return null;
+      const parsed = JSON.parse(rows[0].payload) as SharedCampusState;
+      parsed.version = Number(rows[0].version) || parsed.version || 0;
+      return normalizeUserCredentials(parsed);
+    } catch (err) {
+      console.error('[Neon DB Read Error]', err);
+    }
   }
 
   try {
@@ -136,16 +144,20 @@ async function persistState(state: SharedCampusState): Promise<void> {
   }
 
   if (storageKind() === 'neon') {
-    const sql = await ensureNeonTable();
-    await sql`
-      INSERT INTO campus_state (id, version, payload, updated_at)
-      VALUES (${STATE_ID}, ${state.version}, ${payload}, NOW())
-      ON CONFLICT (id) DO UPDATE SET
-        version = EXCLUDED.version,
-        payload = EXCLUDED.payload,
-        updated_at = NOW()
-    `;
-    return;
+    try {
+      const sql = await ensureNeonTable();
+      await sql`
+        INSERT INTO campus_state (id, version, payload, updated_at)
+        VALUES (${STATE_ID}, ${state.version}, ${payload}, NOW())
+        ON CONFLICT (id) DO UPDATE SET
+          version = EXCLUDED.version,
+          payload = EXCLUDED.payload,
+          updated_at = NOW()
+      `;
+      return;
+    } catch (err) {
+      console.error('[Neon DB Write Error]', err);
+    }
   }
 
   await fs.mkdir(path.dirname(LOCAL_STATE_FILE), { recursive: true });
@@ -163,9 +175,11 @@ export async function putCampusState(
 ): Promise<SharedCampusState> {
   const current = (await loadState()) || emptyState();
 
+  // mergeSharedState वापरल्याने MongoDB Atlas प्रमाणे सर्व ऐतिहासिक readings, meters आणि users आपोआप सिंक राहतात
+  const merged = mergeSharedState(current, removeUserSecrets(incoming));
+
   const next: SharedCampusState = {
-    ...current,
-    ...incoming,
+    ...merged,
     version: (current.version || 0) + 1,
     // 1. ब्लॉक इनचार्जचे नाव आणि आयडी कायमस्वरूपी सेव्ह ठेवणे
     blocks: incoming.blocks
@@ -178,7 +192,7 @@ export async function putCampusState(
             inchargeName: incBlock.inchargeName !== undefined ? incBlock.inchargeName : (old?.inchargeName || 'Unassigned'),
           };
         })
-      : current.blocks,
+      : merged.blocks,
     // 2. नवीन तयार केलेले युझर्स गायब न होऊ देणे
     users: incoming.users
       ? (() => {
@@ -186,13 +200,12 @@ export async function putCampusState(
           const retainedOldUsers = current.users.filter((u) => !incomingIds.has(u.id));
           return [...retainedOldUsers, ...incoming.users];
         })()
-      : current.users,
+      : merged.users,
   };
 
   await persistState(next);
   return next;
 }
-
 
 export async function deleteNotification(notificationId: string, user: AuthUser | null): Promise<StateApiResult> {
   if (!user) return { status: 401, body: { error: 'Authentication required', storage: storageKind() } };
@@ -267,7 +280,6 @@ function validateUserChanges(current: SharedCampusState, incoming: Partial<Share
       if (candidate.username !== existing?.username || candidate.role !== 'admin') {
         return 'The protected administrator identity cannot be changed';
       }
-
     }
     if (candidate.role === 'admin' && candidate.id !== adminId) {
       return 'Only the protected administrator may have the admin role';
@@ -352,8 +364,8 @@ export async function handleCampusStateRequest(
         ? state
         : {
             ...state,
-          users: state.users.filter((candidate) => candidate.id === user.id),
-          blocks: state.blocks.filter((block) => roleAllowsBlock(user, block.id)),
+            users: state.users.filter((candidate) => candidate.id === user.id),
+            blocks: state.blocks.filter((block) => roleAllowsBlock(user, block.id)),
             meters: state.meters.filter((meter) => roleAllowsBlock(user, meter.blockId)),
             readings: state.readings.filter((reading) => roleAllowsBlock(user, reading.blockId)),
             exceedances: state.exceedances.filter((item) => roleAllowsBlock(user, item.blockId)),
