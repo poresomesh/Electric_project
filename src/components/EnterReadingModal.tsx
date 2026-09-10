@@ -250,7 +250,7 @@ export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
   }, [isValidNumber, isValidKvah, unitsConsumed, kvahConsumed, powerFactor]);
 
   // Handle single reading submission
-  const handleSubmitSingle = (e: React.FormEvent) => {
+  const handleSubmitSingle = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -275,7 +275,7 @@ export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
       return;
     }
 
-    const result = addReading({
+    const result = await addReading({
       blockId: selectedBlockId,
       meterId: selectedMeterId,
       readingDate,
