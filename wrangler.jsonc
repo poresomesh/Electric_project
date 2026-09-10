@@ -1,0 +1,24 @@
+{
+  "name": "energy-monitoring-billing",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ENERGY_STORE",
+        "class_name": "EnergyStore"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["EnergyStore"]
+    }
+  ]
+}

@@ -1,0 +1,597 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, [data-theme="dark"], .dark *, [data-theme="dark"] *));
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Base theme transitions */
+html {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* =========================================================================
+   DARK THEME VISIBILITY & MAXIMUM HIGH-CONTRAST TYPOGRAPHY
+   Guarantees no invisible, muted, or washed-out fonts when switched to Dark Mode
+   ========================================================================= */
+
+html.dark,
+html[data-theme="dark"],
+html:not(.light) {
+  color-scheme: dark;
+}
+
+html.dark body,
+html[data-theme="dark"] body {
+  background-color: #020617;
+  color: #f8fafc;
+}
+
+/* High contrast typography in dark mode for text-slate elements (excluding printable invoice and white sheets) */
+html.dark .text-slate-900:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill):not([class*="bg-amber-"]):not([class*="bg-cyan-"]):not([class*="bg-yellow-"]),
+html[data-theme="dark"] .text-slate-900:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill):not([class*="bg-amber-"]):not([class*="bg-cyan-"]):not([class*="bg-yellow-"]) {
+  color: #ffffff !important;
+}
+
+html.dark .text-slate-800:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill):not([class*="bg-amber-"]):not([class*="bg-cyan-"]):not([class*="bg-yellow-"]),
+html[data-theme="dark"] .text-slate-800:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill):not([class*="bg-amber-"]):not([class*="bg-cyan-"]):not([class*="bg-yellow-"]) {
+  color: #f1f5f9 !important;
+}
+
+html.dark .text-slate-700:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill):not([class*="bg-amber-"]):not([class*="bg-cyan-"]):not([class*="bg-yellow-"]),
+html[data-theme="dark"] .text-slate-700:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill):not([class*="bg-amber-"]):not([class*="bg-cyan-"]):not([class*="bg-yellow-"]) {
+  color: #e2e8f0 !important;
+}
+
+html.dark .text-slate-600:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill),
+html[data-theme="dark"] .text-slate-600:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill) {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-500:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill),
+html[data-theme="dark"] .text-slate-500:not(.bg-white *):not(.bg-white):not(.printable-bill *):not(.printable-bill) {
+  color: #94a3b8 !important;
+}
+
+/* Dark Mode Native Inputs & Date Pickers */
+html.dark input:not([type="checkbox"]):not([type="radio"]):not(.printable-bill *),
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not(.printable-bill *),
+html.dark select:not(.printable-bill *),
+html[data-theme="dark"] select:not(.printable-bill *),
+html.dark textarea:not(.printable-bill *),
+html[data-theme="dark"] textarea:not(.printable-bill *) {
+  color-scheme: dark !important;
+  color: #ffffff !important;
+}
+
+/* Dark Mode Native Select Options */
+html:not(.light) select option,
+html[data-theme="dark"] select option,
+html.dark select option {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+/* =========================================================================
+   LIGHT THEME TRANSFORMATION & MAXIMUM VISIBILITY CONTRAST
+   Ensures 100% crystal-clear visibility, no hidden text, and high WCAG contrast
+   ========================================================================= */
+
+html.light,
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html.light body,
+html[data-theme="light"] body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Root App Shell & Page Surfaces */
+html.light .bg-slate-950,
+html[data-theme="light"] .bg-slate-950 {
+  background-color: #f8fafc !important;
+}
+
+/* Cards & Surface Paneling */
+html.light .bg-slate-900,
+html.light .bg-slate-900\/95,
+html.light .bg-slate-900\/90,
+html.light .bg-slate-900\/80,
+html.light .bg-slate-900\/75,
+html.light .bg-slate-900\/70,
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/50,
+html.light .bg-slate-900\/40,
+html.light .bg-slate-900\/30,
+html.light .bg-slate-900\/20,
+html.light .bg-slate-900\/10,
+html.light .bg-slate-950,
+html.light .bg-slate-950\/95,
+html.light .bg-slate-950\/90,
+html.light .bg-slate-950\/85,
+html.light .bg-slate-950\/80,
+html.light .bg-slate-950\/70,
+html.light .bg-slate-950\/60,
+html.light .bg-slate-950\/50,
+html.light .bg-slate-950\/40,
+html.light .bg-slate-950\/30,
+html.light .bg-slate-950\/20,
+html.light .bg-slate-950\/10,
+html[data-theme="light"] .bg-slate-900,
+html[data-theme="light"] .bg-slate-900\/95,
+html[data-theme="light"] .bg-slate-900\/90,
+html[data-theme="light"] .bg-slate-900\/80,
+html[data-theme="light"] .bg-slate-900\/75,
+html[data-theme="light"] .bg-slate-900\/70,
+html[data-theme="light"] .bg-slate-900\/60,
+html[data-theme="light"] .bg-slate-900\/50,
+html[data-theme="light"] .bg-slate-900\/40,
+html[data-theme="light"] .bg-slate-900\/30,
+html[data-theme="light"] .bg-slate-900\/20,
+html[data-theme="light"] .bg-slate-900\/10,
+html[data-theme="light"] .bg-slate-950,
+html[data-theme="light"] .bg-slate-950\/95,
+html[data-theme="light"] .bg-slate-950\/90,
+html[data-theme="light"] .bg-slate-950\/85,
+html[data-theme="light"] .bg-slate-950\/80,
+html[data-theme="light"] .bg-slate-950\/70,
+html[data-theme="light"] .bg-slate-950\/60,
+html[data-theme="light"] .bg-slate-950\/50,
+html[data-theme="light"] .bg-slate-950\/40,
+html[data-theme="light"] .bg-slate-950\/30,
+html[data-theme="light"] .bg-slate-950\/20,
+html[data-theme="light"] .bg-slate-950\/10 {
+  background-color: #ffffff !important;
+}
+
+/* Secondary Panels, Insets & Table Rows */
+html.light .bg-slate-800,
+html.light .bg-slate-800\/95,
+html.light .bg-slate-800\/90,
+html.light .bg-slate-800\/80,
+html.light .bg-slate-800\/70,
+html.light .bg-slate-800\/60,
+html.light .bg-slate-800\/50,
+html.light .bg-slate-800\/40,
+html.light .bg-slate-800\/30,
+html.light .bg-slate-800\/20,
+html.light .bg-slate-850,
+html.light .bg-slate-750,
+html[data-theme="light"] .bg-slate-800,
+html[data-theme="light"] .bg-slate-800\/95,
+html[data-theme="light"] .bg-slate-800\/90,
+html[data-theme="light"] .bg-slate-800\/80,
+html[data-theme="light"] .bg-slate-800\/70,
+html[data-theme="light"] .bg-slate-800\/60,
+html[data-theme="light"] .bg-slate-800\/50,
+html[data-theme="light"] .bg-slate-800\/40,
+html[data-theme="light"] .bg-slate-800\/30,
+html[data-theme="light"] .bg-slate-800\/20,
+html[data-theme="light"] .bg-slate-850,
+html[data-theme="light"] .bg-slate-750 {
+  background-color: #f8fafc !important;
+}
+
+/* Hover States on light surfaces */
+html.light .hover\:bg-slate-800:hover,
+html.light .hover\:bg-slate-800\/80:hover,
+html.light .hover\:bg-slate-800\/60:hover,
+html.light .hover\:bg-slate-800\/50:hover,
+html.light .hover\:bg-slate-800\/40:hover,
+html.light .hover\:bg-slate-750:hover,
+html.light .hover\:bg-slate-700\/80:hover,
+html.light .hover\:bg-slate-700:hover {
+  background-color: #e2e8f0 !important;
+}
+
+/* Clean Light Borders */
+html.light .border-slate-950,
+html.light .border-slate-900,
+html.light .border-slate-800,
+html.light .border-slate-800\/80,
+html.light .border-slate-800\/60,
+html.light .border-slate-800\/50,
+html.light .border-slate-800\/40,
+html.light .border-slate-700,
+html.light .border-slate-700\/80,
+html.light .border-slate-700\/60,
+html.light .border-slate-700\/50,
+html.light .border-slate-700\/30 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Headings & Base Typography */
+html.light h1,
+html.light h2,
+html.light h3,
+html.light h4,
+html.light h5,
+html.light h6 {
+  color: #0f172a !important;
+}
+
+/* Text Overrides for standard cards (Excludes colored buttons/chips) */
+html.light .text-white:not(button *):not(button):not([class*="from-"]):not([class*="bg-cyan-600"]):not([class*="bg-blue-600"]):not([class*="bg-indigo-600"]):not([class*="bg-rose-500"]):not([class*="bg-rose-600"]):not([class*="bg-emerald-600"]):not([class*="bg-emerald-500"]),
+html.light .text-slate-100:not(button *):not(button),
+html.light .text-slate-200:not(button *):not(button) {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-300:not(button *):not(button),
+html.light .text-slate-400:not(button *):not(button) {
+  color: #475569 !important;
+}
+
+html.light .text-slate-500,
+html.light .text-slate-600 {
+  color: #64748b !important;
+}
+
+/* =========================================================================
+   BUTTON CONTRAST FIXES - NEVER ALLOW BLACK ON DARK OR INVISIBLE TEXT
+   ========================================================================= */
+
+/* Gradient & Solid Colored Action Buttons (Keep crisp white text) */
+html.light button[class*="from-cyan-"],
+html.light button[class*="from-blue-"],
+html.light [class*="bg-gradient-to-r"][class*="from-cyan-500"],
+html.light [class*="bg-gradient-to-r"][class*="from-blue-600"],
+html.light button.bg-blue-600,
+html.light button.bg-indigo-600,
+html.light button.bg-rose-500,
+html.light button.bg-rose-600,
+html.light button.bg-emerald-600,
+html.light button.bg-emerald-500 {
+  color: #ffffff !important;
+}
+
+html.light button[class*="from-cyan-"] *,
+html.light button[class*="from-blue-"] *,
+html.light [class*="bg-gradient-to-r"][class*="from-cyan-500"] *,
+html.light [class*="bg-gradient-to-r"][class*="from-blue-600"] *,
+html.light button.bg-blue-600 *,
+html.light button.bg-indigo-600 *,
+html.light button.bg-rose-500 *,
+html.light button.bg-rose-600 *,
+html.light button.bg-emerald-600 *,
+html.light button.bg-emerald-500 * {
+  color: #ffffff !important;
+}
+
+/* Bright Cyan & Amber Buttons (Ensure high-contrast dark slate text) */
+html.light button.bg-cyan-500,
+html.light button.bg-amber-400,
+html.light button.bg-amber-500,
+html.light .bg-amber-400 {
+  color: #0f172a !important;
+}
+
+html.light button.bg-cyan-500 *,
+html.light button.bg-amber-400 *,
+html.light button.bg-amber-500 *,
+html.light .bg-amber-400 * {
+  color: #0f172a !important;
+}
+
+/* Secondary Buttons in Light Mode */
+html.light button.bg-slate-800,
+html.light button.bg-slate-800\/90,
+html.light button.bg-slate-900 {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+html.light button.bg-slate-800:hover,
+html.light button.bg-slate-900:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.light button.bg-slate-800 *,
+html.light button.bg-slate-900 * {
+  color: #0f172a !important;
+}
+
+/* =========================================================================
+   TINTED GRADIENT CARDS & HIGHLIGHT BOXES
+   ========================================================================= */
+
+/* Green Total Net Bill / Success Highlight Card */
+html.light [class*="from-emerald-950"],
+html.light [class*="from-teal-950"] {
+  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdfa 100%) !important;
+  border-color: #6ee7b7 !important;
+  color: #065f46 !important;
+}
+
+html.light [class*="from-emerald-950"] .text-white,
+html.light [class*="from-teal-950"] .text-white,
+html.light [class*="from-emerald-950"] .text-emerald-300,
+html.light [class*="from-teal-950"] .text-emerald-300 {
+  color: #065f46 !important;
+}
+
+/* Blue / Cyan Multiplier & Output Cards */
+html.light [class*="from-cyan-950"],
+html.light [class*="from-blue-950"] {
+  background: linear-gradient(135deg, #f0f9ff 0%, #eff6ff 100%) !important;
+  border-color: #7dd3fc !important;
+  color: #0369a1 !important;
+}
+
+html.light [class*="from-cyan-950"] .text-white,
+html.light [class*="from-blue-950"] .text-white,
+html.light [class*="from-cyan-950"] .text-cyan-300,
+html.light [class*="from-blue-950"] .text-cyan-300 {
+  color: #0369a1 !important;
+}
+
+/* Inputs, Selects, and Textareas in Light Mode */
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light select,
+html.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light input:focus,
+html.light select:focus,
+html.light textarea:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15) !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light select option {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Status Badges & Color Accents in Light Mode */
+html.light .text-cyan-400,
+html.light .text-cyan-300 {
+  color: #0284c7 !important;
+}
+
+html.light .bg-cyan-500\/10,
+html.light .bg-cyan-500\/15,
+html.light .bg-cyan-500\/20,
+html.light .bg-cyan-950,
+html.light .bg-cyan-950\/40,
+html.light .bg-cyan-900\/60 {
+  background-color: #f0f9ff !important;
+  border-color: #bae6fd !important;
+}
+
+html.light .text-amber-400,
+html.light .text-amber-300 {
+  color: #d97706 !important;
+}
+
+html.light .bg-amber-500\/10,
+html.light .bg-amber-500\/15,
+html.light .bg-amber-500\/20,
+html.light .bg-amber-950 {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+}
+
+html.light .text-emerald-400,
+html.light .text-emerald-300 {
+  color: #059669 !important;
+}
+
+html.light .bg-emerald-500\/10,
+html.light .bg-emerald-500\/15,
+html.light .bg-emerald-500\/20,
+html.light .bg-emerald-950 {
+  background-color: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+}
+
+html.light .text-purple-400,
+html.light .text-purple-300 {
+  color: #7c3aed !important;
+}
+
+html.light .text-indigo-400,
+html.light .text-indigo-300,
+html.light .text-indigo-200 {
+  color: #4338ca !important;
+}
+
+html.light .bg-indigo-500\/10,
+html.light .bg-indigo-500\/15,
+html.light .bg-indigo-500\/20,
+html.light .bg-indigo-950,
+html.light .bg-indigo-950\/40,
+html.light .bg-indigo-900\/40 {
+  background-color: #eef2ff !important;
+  border-color: #c7d2fe !important;
+}
+
+html.light [class*="via-indigo-950"] {
+  background: linear-gradient(to right, #ffffff, #eef2ff, #ffffff) !important;
+  border-color: #c7d2fe !important;
+}
+
+html.light .bg-purple-500\/10,
+html.light .bg-purple-500\/15,
+html.light .bg-purple-500\/20,
+html.light .bg-purple-950 {
+  background-color: #f5f3ff !important;
+  border-color: #ddd6fe !important;
+}
+
+html.light .text-rose-400,
+html.light .text-rose-300 {
+  color: #e11d48 !important;
+}
+
+html.light .bg-rose-500\/10,
+html.light .bg-rose-500\/15,
+html.light .bg-rose-500\/20 {
+  background-color: #fff1f2 !important;
+  border-color: #fecdd3 !important;
+}
+
+/* Navbar & Header in Light Mode */
+html.light header {
+  background-color: rgba(255, 255, 255, 0.97) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+html.light footer {
+  background-color: #ffffff !important;
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+/* Nav tabs in Light Mode */
+html.light nav button.bg-cyan-500 {
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+}
+html.light nav button.bg-cyan-500 * {
+  color: #ffffff !important;
+}
+
+html.light nav button:not(.bg-cyan-500) {
+  color: #475569 !important;
+}
+
+html.light nav button:not(.bg-cyan-500):hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* Filter pills in Light Mode */
+html.light .p-1.bg-slate-950\/80 button.bg-cyan-500,
+html.light .p-1.bg-slate-950\/80 button.bg-amber-400 {
+  background-color: #0284c7 !important;
+  color: #ffffff !important;
+}
+
+html.light .p-1.bg-slate-950\/80 button.bg-amber-400 {
+  background-color: #d97706 !important;
+  color: #ffffff !important;
+}
+
+html.light .p-1.bg-slate-950\/80 button:not(.bg-cyan-500):not(.bg-amber-400) {
+  color: #475569 !important;
+}
+
+html.light .p-1.bg-slate-950\/80 button:not(.bg-cyan-500):not(.bg-amber-400):hover {
+  color: #0f172a !important;
+  background-color: #e2e8f0 !important;
+}
+
+/* Table Headers in Light Mode */
+html.light thead.bg-slate-950\/60,
+html.light thead {
+  background-color: #f8fafc !important;
+}
+
+html.light th {
+  color: #475569 !important;
+}
+
+/* Modals & Backdrops in Light Mode */
+html.light .bg-black\/80,
+html.light .bg-black\/75,
+html.light .bg-black\/70 {
+  background-color: rgba(15, 23, 42, 0.65) !important;
+}
+
+/* Chart Tooltips in Light Mode */
+html.light .recharts-default-tooltip,
+html.light [class*="recharts-tooltip"],
+html.light .bg-slate-900\/95,
+html.light .bg-slate-900\/90 {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1) !important;
+}
+
+html.light .bg-slate-900\/95 *,
+html.light .bg-slate-900\/90 * {
+  color: #0f172a !important;
+}
+
+@media print {
+  .no-print,
+  nav,
+  header,
+  footer,
+  aside {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  html, body, #root, main {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .printable-bill {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #222222 !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 24px !important;
+    display: block !important;
+    page-break-inside: avoid;
+  }
+  .printable-bill * {
+    color: #000000 !important;
+    background: transparent !important;
+    text-shadow: none !important;
+  }
+  .printable-bill input {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+    font-weight: bold !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+  .printable-bill table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  .printable-bill table th,
+  .printable-bill table td {
+    border: 1px solid #cccccc !important;
+    background: transparent !important;
+    color: #000000 !important;
+    padding: 8px 10px !important;
+  }
+}
+
+
+

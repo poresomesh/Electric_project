@@ -1,0 +1,6 @@
+{
+  "name": "Energy Monitoring & Billing System",
+  "description": "Smart digital energy meter reading, automatic consumption calculation, day/week/month/year analytics, live bill calculation, and block-wise role management for electrical departments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
