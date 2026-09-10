@@ -64,7 +64,7 @@ interface EnergyContextType {
     currentReadingKvah?: number;
     multiplier?: number;
     notes?: string;
-  }) => { success: boolean; unitsConsumedKwh: number; cost: number; message: string };
+  }) => Promise<{ success: boolean; unitsConsumedKwh: number; cost: number; message: string }>;
   deleteMsebReading: (id: string) => boolean;
   clearAllMsebReadings: (blockId?: string) => void;
   updateMsebTariff: (tariff: MsebTariffConfig) => void;
@@ -121,7 +121,7 @@ interface EnergyContextType {
     voltageRms?: number;
     powerFactor?: number;
     peakDemandKw?: number;
-  }) => { success: boolean; unitsConsumed: number; message: string; newReading?: MeterReading };
+  }) => Promise<{ success: boolean; unitsConsumed: number; message: string; newReading?: MeterReading }>;
   addBatchReadings: (readingsList: Array<{
     blockId: string;
     meterId: string;
@@ -136,7 +136,7 @@ interface EnergyContextType {
     voltageRms?: number;
     powerFactor?: number;
     peakDemandKw?: number;
-  }>) => { success: boolean; count: number; totalUnits: number; message: string };
+  }>) => Promise<{ success: boolean; count: number; totalUnits: number; message: string }>;
   deleteReading: (id: string) => boolean;
   deleteAllReadings: () => boolean;
   
@@ -244,6 +244,21 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data = await response.json() as { user?: User };
+        if (data.user) {
+          setCurrentUser(data.user);
+          setIsAuthenticated(true);
+        }
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+      });
+  }, []);
 
   const [blocks, setBlocks] = useState<Block[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}blocks`);
@@ -477,7 +492,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [syncStatus, setSyncStatus] = useState<'cloud' | 'local' | 'connecting' | 'error'>('connecting');
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const lastSeenVersionRef = useRef(0);
-  const skipPushRef = useRef(false);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}deleted_notification_ids`, JSON.stringify(deletedNotificationIds));
@@ -523,35 +537,10 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     notifications,
   });
 
-  const getSavePayload = (): Partial<SharedCampusState> => {
-    const operationalState: Partial<SharedCampusState> = {
-      readings,
-      msebReadings,
-      deletedReadingIds,
-      deletedMsebReadingIds,
-      deletedNotificationIds,
-      dailyLimits,
-      exceedances,
-      notifications,
-    };
-    if (!isAdmin) return operationalState;
-    return {
-      ...operationalState,
-      users,
-      blocks,
-      meters,
-      tariff,
-      msebBlocks,
-      msebTariffs,
-      deletedUserIds,
-    };
-  };
-
   const sharedStateRef = useRef<Omit<SharedCampusState, 'version'>>(collectSharedState());
   sharedStateRef.current = collectSharedState();
 
   const applySharedState = (remote: SharedCampusState) => {
-    skipPushRef.current = true;
     lastSeenVersionRef.current = remote.version || 0;
     if (remote.users?.length) setUsers(remote.users);
     if (remote.blocks?.length) {
@@ -567,62 +556,49 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       );
     }
     if (remote.meters?.length) setMeters(remote.meters);
-    setReadings(remote.readings || []);
+    if (remote.readings) setReadings(remote.readings);
     if (remote.tariff) setTariff(remote.tariff);
     if (remote.msebBlocks?.length) setMsebBlocks(remote.msebBlocks);
-    setMsebReadings(remote.msebReadings || []);
+    if (remote.msebReadings) setMsebReadings(remote.msebReadings);
     if (remote.msebTariffs) setMsebTariffs(remote.msebTariffs);
-    setDeletedReadingIds(remote.deletedReadingIds || []);
-    setDeletedMsebReadingIds(remote.deletedMsebReadingIds || []);
-    setDeletedNotificationIds(remote.deletedNotificationIds || []);
-    setDeletedUserIds(remote.deletedUserIds || []);
+    if (remote.deletedReadingIds) setDeletedReadingIds(remote.deletedReadingIds);
+    if (remote.deletedMsebReadingIds) setDeletedMsebReadingIds(remote.deletedMsebReadingIds);
+    if (remote.deletedNotificationIds) setDeletedNotificationIds(remote.deletedNotificationIds);
+    if (remote.deletedUserIds) setDeletedUserIds(remote.deletedUserIds);
     if (remote.dailyLimits) setDailyLimits(remote.dailyLimits);
     if (remote.exceedances) setExceedances(remote.exceedances);
     if (remote.notifications) setNotifications(remote.notifications);
   };
 
-  // Check auth and fetch remote cloud state immediately on app open
+  // 1. Initial Load: Always load latest state from Neon DB directly
   useEffect(() => {
     let cancelled = false;
-
-    const initializeState = async () => {
-      try {
-        const authRes = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
-        if (authRes.ok) {
-          const authData = await authRes.json();
-          if (authData?.user && !cancelled) {
-            setCurrentUser(authData.user);
-            setIsAuthenticated(true);
-          }
-        }
-      } catch (e) {}
-
+    (async () => {
       const remote = await fetchSharedState();
       if (cancelled) return;
       if (remote && ((remote.readings && remote.readings.length > 0) || (remote.version || 0) > 0 || remote.users?.length)) {
         applySharedState(remote);
         setLastSyncedAt(new Date());
+        setSyncStatus('cloud');
       }
       setSyncReady(true);
-    };
-
-    initializeState();
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-   
-  // Background sync for real-time data across tabs and devices
+  // 2. Realtime Background Poller: Keeps mobile and laptop synced continuously
   useEffect(() => {
     if (!syncReady) return;
     const timer = window.setInterval(async () => {
       const remote = await fetchSharedState();
       if (!remote) return;
-      if ((remote.version || 0) <= lastSeenVersionRef.current) return;
-      applySharedState(remote);
-      setLastSyncedAt(new Date());
-    }, 2000);
+      if ((remote.version || 0) > lastSeenVersionRef.current) {
+        applySharedState(remote);
+        setLastSyncedAt(new Date());
+      }
+    }, 2500);
     return () => window.clearInterval(timer);
   }, [syncReady]);
 
@@ -647,7 +623,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const canManageUsers = isAdmin;
   const canEditTariff = isAdmin;
 
-  // Login function: Loads latest Postgres database state immediately upon login
   const login = async (username: string, pass?: string): Promise<boolean> => {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -656,19 +631,14 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       body: JSON.stringify({ username: username.trim(), password: (pass || '').trim() }),
     });
     if (!response.ok) return false;
-    const data = (await response.json()) as { user?: User };
+    const data = await response.json() as { user?: User };
     if (!data.user) return false;
     setCurrentUser(data.user);
     setIsAuthenticated(true);
-
-    try {
-      const remote = await fetchSharedState();
-      if (remote) {
-        applySharedState(remote);
-        setLastSyncedAt(new Date());
-      }
-    } catch (e) {
-      console.error('Failed to sync state after login', e);
+    const remote = await fetchSharedState();
+    if (remote) {
+      applySharedState(remote);
+      setLastSyncedAt(new Date());
     }
     return true;
   };
@@ -730,21 +700,22 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const now = new Date().toISOString();
     setDailyLimits((prev) => {
       const existing = prev.find((limit) => limit.blockId === blockId);
-      if (existing) {
-        return prev.map((limit) =>
-          limit.blockId === blockId
-            ? { ...limit, dailyLimitUnits, effectiveFrom: getTodayDateStr(), updatedAt: now, updatedBy: currentUser.id }
-            : limit
-        );
-      }
-      return [...prev, {
-        id: `limit-${blockId}`,
-        blockId,
-        dailyLimitUnits,
-        effectiveFrom: getTodayDateStr(),
-        updatedAt: now,
-        updatedBy: currentUser.id,
-      }];
+      const updated = existing
+        ? prev.map((limit) =>
+            limit.blockId === blockId
+              ? { ...limit, dailyLimitUnits, effectiveFrom: getTodayDateStr(), updatedAt: now, updatedBy: currentUser.id }
+              : limit
+          )
+        : [...prev, {
+            id: `limit-${blockId}`,
+            blockId,
+            dailyLimitUnits,
+            effectiveFrom: getTodayDateStr(),
+            updatedAt: now,
+            updatedBy: currentUser.id,
+          }];
+      saveSharedState({ dailyLimits: updated });
+      return updated;
     });
     return true;
   };
@@ -757,16 +728,19 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
     const adminUser = users.find((user) => user.role === 'admin');
     const submittedAt = new Date().toISOString();
-    setExceedances((prev) => prev.map((item) => item.id === exceedanceId
-      ? { ...item, remark: cleanRemark, respondedBy: currentUser.id, respondedAt: submittedAt, status: 'responded' }
-      : item));
+    const updatedExceedances = exceedances.map((item) => item.id === exceedanceId
+      ? { ...item, remark: cleanRemark, respondedBy: currentUser.id, respondedAt: submittedAt, status: 'responded' as const }
+      : item);
+    setExceedances(updatedExceedances);
+    saveSharedState({ exceedances: updatedExceedances });
+
     setNotifications((prev) => {
       const notificationId = `remark-${exceedanceId}`;
       if (prev.some((notification) => notification.id === notificationId)) return prev;
-      return [{
+      const updatedNotifs = [{
         id: notificationId,
         userId: adminUser?.id,
-        type: 'exceedance_remark_submitted',
+        type: 'exceedance_remark_submitted' as const,
         exceedanceId,
         blockId: target.blockId,
         readingDate: target.readingDate,
@@ -775,6 +749,8 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         createdAt: submittedAt,
         readByUserIds: [],
       }, ...prev];
+      saveSharedState({ notifications: updatedNotifs });
+      return updatedNotifs;
     });
     return true;
   };
@@ -845,7 +821,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           id: `notification-${id}`,
           userId: blocks.find((block) => block.id === blockId)?.inchargeId,
           type: 'daily_limit_exceeded',
-          exceedanceId,
+          exceedanceId: id,
           blockId,
           readingDate,
           title: 'Daily energy limit exceeded',
@@ -880,7 +856,9 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       password: userData.password?.trim() || 'SOL@13',
       passwordConfigured: true,
     };
-    setUsers((prev) => [...prev, newUser]);
+    const updatedUsers = [...users, newUser];
+    setUsers(updatedUsers);
+    saveSharedState({ users: updatedUsers });
   };
 
   const updateUser = (id: string, updates: Partial<User> & { newId?: string }) => {
@@ -892,21 +870,16 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return;
     }
     if (updates.role === 'admin') return;
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === id) {
-          return { ...u, ...updates, id: targetId };
-        }
-        return u;
-      })
-    );
+    
+    const updatedUsers = users.map((u) => (u.id === id ? { ...u, ...updates, id: targetId } : u));
+    setUsers(updatedUsers);
+    saveSharedState({ users: updatedUsers });
 
     if (targetId !== id) {
       setBlocks((prev) =>
         prev.map((b) => (b.inchargeId === id ? { ...b, inchargeId: targetId } : b))
       );
     }
-
     if (currentUser.id === id) {
       setCurrentUser((prev) => ({ ...prev, ...updates, id: targetId }));
     }
@@ -924,18 +897,18 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   ): Promise<{ success: boolean; message: string }> => {
     if (currentUser.role !== 'admin') {
-      return { success: false, message: 'Only Administrator can assign credentials to blocks.' };
+      return Promise.resolve({ success: false, message: 'Only Administrator can assign credentials to blocks.' });
     }
 
     const targetBlock = blocks.find((b) => b.id === blockId);
     if (!targetBlock) {
-      return { success: false, message: 'Specified block does not exist.' };
+      return Promise.resolve({ success: false, message: 'Specified block does not exist.' });
     }
 
     const cleanUsername = credentials.username.trim();
     const cleanPassword = credentials.password.trim();
     if (!cleanUsername || !cleanPassword) {
-      return { success: false, message: 'Username and Password cannot be empty.' };
+      return Promise.resolve({ success: false, message: 'Username and Password cannot be empty.' });
     }
 
     const existingIncharge = users.find(
@@ -953,10 +926,10 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       (u) => u.username.toLowerCase() === cleanUsername.toLowerCase() && u.id !== existingIncharge?.id && u.id !== assignedId
     );
     if (usernameClash) {
-      return {
+      return Promise.resolve({
         success: false,
-        message: `Username "${cleanUsername}" is already taken. Please choose another username.`,
-      };
+        message: `Username "${cleanUsername}" is already assigned to "${usernameClash.name}". Please pick a unique username.`,
+      });
     }
 
     const nextUsers = existingIncharge
@@ -981,25 +954,25 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
 
     const saved = await saveSharedState({
-      ...sharedStateRef.current,
       users: nextUsers,
       blocks: nextBlocks,
     });
     if (!saved) {
-      return { success: false, message: 'Credentials could not be saved to the database. Please try again.' };
+      return { success: false, message: 'Credentials could not be saved to the server. Please try again.' };
     }
 
     setUsers(nextUsers);
     setBlocks(nextBlocks);
 
-    return {
+    return Promise.resolve({
       success: true,
-      message: `Credentials successfully saved to database for ${targetBlock.name}!`,
-    };
+      message: `ID "${assignedId}", Username "${cleanUsername}", and Password successfully assigned to ${targetBlock.name}!`,
+    });
   };
 
   const deleteUser = (id: string) => {
-    if (currentUser.role !== 'admin' || users.length <= 1) return false;
+    if (currentUser.role !== 'admin') return false;
+    if (users.length <= 1) return false;
     setUsers((prev) => prev.filter((u) => u.id !== id));
     setDeletedUserIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     void fetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
@@ -1008,13 +981,15 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
     if (currentUser.id === id) {
       const remaining = users.filter((u) => u.id !== id);
-      if (remaining.length > 0) setCurrentUser(remaining[0]);
+      if (remaining.length > 0) {
+        setCurrentUser(remaining[0]);
+      }
     }
     return true;
   };
 
-  // Add Reading with immediate cloud push
-  const addReading = ({
+  // Add Meter Reading: Guaranteed Async Persistence directly into Neon PostgreSQL
+  const addReading = async ({
     blockId,
     meterId,
     readingDate,
@@ -1112,31 +1087,30 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
 
     const updatedReadings = [newReading, ...readings];
-    setReadings(updatedReadings);
+    const updatedMeters = meters.map((m) =>
+      m.id === meterId
+        ? {
+            ...m,
+            multiplier: meterMultiplier,
+            lastReadingDate: readingDate,
+            lastReadingValue: currentReading,
+          }
+        : m
+    );
 
-    // Instant save directly to Neon Postgres
-    saveSharedState({
-      ...sharedStateRef.current,
+    // Save directly to Neon Database first
+    const saved = await saveSharedState({
       readings: updatedReadings,
-    }).then((saved) => {
-      if (saved?.version) {
-        lastSeenVersionRef.current = saved.version;
-        setLastSyncedAt(new Date());
-      }
+      meters: updatedMeters,
     });
 
-    setMeters((prevMeters) =>
-      prevMeters.map((m) =>
-        m.id === meterId
-          ? {
-              ...m,
-              multiplier: meterMultiplier,
-              lastReadingDate: readingDate,
-              lastReadingValue: currentReading,
-            }
-          : m
-      )
-    );
+    if (saved?.version) {
+      lastSeenVersionRef.current = saved.version;
+      setLastSyncedAt(new Date());
+    }
+
+    setReadings(updatedReadings);
+    setMeters(updatedMeters);
 
     return {
       success: true,
@@ -1146,7 +1120,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   };
 
-  const addBatchReadings = (
+  const addBatchReadings = async (
     readingsList: Array<{
       blockId: string;
       meterId: string;
@@ -1219,27 +1193,18 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
 
     const updatedReadings = [...createdReadings, ...readings];
-    setReadings(updatedReadings);
-
-    saveSharedState({
-      ...sharedStateRef.current,
-      readings: updatedReadings,
+    const updatedMeters = meters.map((m) => {
+      const update = latestMeterUpdates.get(m.id);
+      return update ? { ...m, multiplier: update.multiplier || m.multiplier, lastReadingDate: update.date, lastReadingValue: update.value } : m;
     });
 
-    setMeters((prevMeters) =>
-      prevMeters.map((m) => {
-        const update = latestMeterUpdates.get(m.id);
-        if (update) {
-          return {
-            ...m,
-            multiplier: update.multiplier || m.multiplier,
-            lastReadingDate: update.date,
-            lastReadingValue: update.value,
-          };
-        }
-        return m;
-      })
-    );
+    await saveSharedState({
+      readings: updatedReadings,
+      meters: updatedMeters,
+    });
+
+    setReadings(updatedReadings);
+    setMeters(updatedMeters);
 
     return {
       success: true,
@@ -1250,16 +1215,11 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const deleteReading = (id: string) => {
-    setDeletedReadingIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    setReadings((prev) => {
-      const updated = prev.filter((r) => r.id !== id);
-      saveSharedState({
-        ...sharedStateRef.current,
-        readings: updated,
-        deletedReadingIds: [...deletedReadingIds, id],
-      });
-      return updated;
-    });
+    const updated = readings.filter((r) => r.id !== id);
+    const updatedDeleted = [...deletedReadingIds, id];
+    setDeletedReadingIds(updatedDeleted);
+    setReadings(updated);
+    saveSharedState({ readings: updated, deletedReadingIds: updatedDeleted });
     return true;
   };
 
@@ -1268,11 +1228,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const allIds = readings.map((r) => r.id);
     setDeletedReadingIds((prev) => Array.from(new Set([...prev, ...allIds])));
     setReadings([]);
-    saveSharedState({
-      ...sharedStateRef.current,
-      readings: [],
-      deletedReadingIds: Array.from(new Set([...deletedReadingIds, ...allIds])),
-    });
+    saveSharedState({ readings: [], deletedReadingIds: Array.from(new Set([...deletedReadingIds, ...allIds])) });
     setMeters((prevMeters) =>
       prevMeters.map((m) => ({
         ...m,
@@ -1291,18 +1247,25 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       lastReadingDate: data.initialDate || new Date().toISOString().split('T')[0],
       lastReadingValue: data.initialReading || 0,
     };
-    setMeters((prev) => [...prev, newMeter]);
+    const updated = [...meters, newMeter];
+    setMeters(updated);
+    saveSharedState({ meters: updated });
   };
 
   const updateMeter = (id: string, updates: Partial<Meter>) => {
     if (currentUser.role !== 'admin') return;
-    setMeters((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
+    const updated = meters.map((m) => (m.id === id ? { ...m, ...updates } : m));
+    setMeters(updated);
+    saveSharedState({ meters: updated });
   };
 
   const deleteMeter = (id: string) => {
     if (currentUser.role !== 'admin') return false;
-    setMeters((prev) => prev.filter((m) => m.id !== id));
-    setReadings((prev) => prev.filter((r) => r.meterId !== id));
+    const updatedMeters = meters.filter((m) => m.id !== id);
+    const updatedReadings = readings.filter((r) => r.meterId !== id);
+    setMeters(updatedMeters);
+    setReadings(updatedReadings);
+    saveSharedState({ meters: updatedMeters, readings: updatedReadings });
     return true;
   };
 
@@ -1312,28 +1275,34 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       ...data,
       id: `block-${Date.now().toString(36)}`,
     };
-    setBlocks((prev) => [...prev, newBlock]);
+    const updated = [...blocks, newBlock];
+    setBlocks(updated);
+    saveSharedState({ blocks: updated });
   };
 
   const updateBlock = (id: string, updates: Partial<Block>) => {
     if (currentUser.role !== 'admin') return;
-    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    const updated = blocks.map((b) => (b.id === id ? { ...b, ...updates } : b));
+    setBlocks(updated);
+    saveSharedState({ blocks: updated });
   };
 
   const deleteBlock = (id: string) => {
     if (currentUser.role !== 'admin') return false;
-    setBlocks((prev) => prev.filter((b) => b.id !== id));
-    setMeters((prev) => prev.filter((m) => m.blockId !== id));
-    setReadings((prev) => prev.filter((r) => r.blockId !== id));
-    setUsers((prev) =>
-      prev.map((u) => (u.assignedBlockId === id ? { ...u, assignedBlockId: 'ALL' } : u))
-    );
+    const updatedBlocks = blocks.filter((b) => b.id !== id);
+    const updatedMeters = meters.filter((m) => m.blockId !== id);
+    const updatedReadings = readings.filter((r) => r.blockId !== id);
+    setBlocks(updatedBlocks);
+    setMeters(updatedMeters);
+    setReadings(updatedReadings);
+    saveSharedState({ blocks: updatedBlocks, meters: updatedMeters, readings: updatedReadings });
     return true;
   };
 
   const updateTariff = (newTariff: TariffConfig) => {
     if (currentUser.role !== 'admin') return;
     setTariff(newTariff);
+    saveSharedState({ tariff: newTariff });
   };
 
   const calculateBill = ({
@@ -1645,6 +1614,21 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setExceedances([]);
     setNotifications([]);
     setDeletedNotificationIds([]);
+    saveSharedState({
+      users: INITIAL_USERS,
+      blocks: INITIAL_BLOCKS,
+      meters: INITIAL_METERS,
+      readings: INITIAL_READINGS,
+      tariff: INITIAL_TARIFF,
+      msebBlocks: DEFAULT_MSEB_BLOCKS,
+      msebReadings: [],
+      msebTariffs: DEFAULT_MSEB_TARIFFS,
+      deletedReadingIds: [],
+      deletedMsebReadingIds: [],
+      dailyLimits: [],
+      exceedances: [],
+      notifications: [],
+    });
     localStorage.clear();
   };
 
@@ -1674,14 +1658,15 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, [msebTariffs, msebBlocks]);
 
   const updateMsebBlock = (id: string, updates: Partial<MsebBlock>) => {
-    setMsebBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    const updated = msebBlocks.map((b) => (b.id === id ? { ...b, ...updates } : b));
+    setMsebBlocks(updated);
+    saveSharedState({ msebBlocks: updated });
   };
 
   const updateMsebTariffForBlock = (blockId: string, newTariff: MsebTariffConfig) => {
-    setMsebTariffs((prev) => ({
-      ...prev,
-      [blockId]: newTariff,
-    }));
+    const updated = { ...msebTariffs, [blockId]: newTariff };
+    setMsebTariffs(updated);
+    saveSharedState({ msebTariffs: updated });
   };
 
   const updateMsebTariff = (newTariff: MsebTariffConfig) => {
@@ -1794,7 +1779,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   };
 
-  const addMsebReading = (params: {
+  const addMsebReading = async (params: {
     msebBlockId: string;
     readingDate: string;
     readingTime?: string;
@@ -1848,7 +1833,9 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       createdAt: new Date().toISOString(),
     };
 
-    setMsebReadings((prev) => [newReading, ...prev]);
+    const updatedReadings = [newReading, ...msebReadings];
+    await saveSharedState({ msebReadings: updatedReadings });
+    setMsebReadings(updatedReadings);
 
     return {
       success: true,
@@ -1859,29 +1846,21 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const deleteMsebReading = (id: string) => {
-    setDeletedMsebReadingIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    setMsebReadings((prev) => {
-      const updated = prev.filter((r) => r.id !== id);
-      try {
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}mseb_readings`, JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
+    const updated = msebReadings.filter((r) => r.id !== id);
+    const updatedDeleted = [...deletedMsebReadingIds, id];
+    setDeletedMsebReadingIds(updatedDeleted);
+    setMsebReadings(updated);
+    saveSharedState({ msebReadings: updated, deletedMsebReadingIds: updatedDeleted });
     return true;
   };
 
   const clearAllMsebReadings = (blockId?: string) => {
-    setDeletedMsebReadingIds((prev) => {
-      const extra = msebReadings.filter((r) => (blockId ? r.msebBlockId === blockId : true)).map((r) => r.id);
-      return Array.from(new Set([...prev, ...extra]));
-    });
-    setMsebReadings((prev) => {
-      const updated = blockId ? prev.filter((r) => r.msebBlockId !== blockId) : [];
-      try {
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}mseb_readings`, JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
+    const extra = msebReadings.filter((r) => (blockId ? r.msebBlockId === blockId : true)).map((r) => r.id);
+    const updatedDeleted = Array.from(new Set([...deletedMsebReadingIds, ...extra]));
+    const updated = blockId ? msebReadings.filter((r) => r.msebBlockId !== blockId) : [];
+    setDeletedMsebReadingIds(updatedDeleted);
+    setMsebReadings(updated);
+    saveSharedState({ msebReadings: updated, deletedMsebReadingIds: updatedDeleted });
   };
 
   return (
