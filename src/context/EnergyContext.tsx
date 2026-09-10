@@ -612,40 +612,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, []);
 
-  useEffect(() => {
-    if (!syncReady) return;
-    if (skipPushRef.current) {
-      skipPushRef.current = false;
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      saveSharedState(getSavePayload()).then((saved) => {
-        if (saved?.version) {
-          lastSeenVersionRef.current = saved.version;
-          setLastSyncedAt(new Date());
-        }
-      });
-    }, 400);
-    return () => window.clearTimeout(timer);
-  }, [
-    users,
-    blocks,
-    meters,
-    readings,
-    tariff,
-    msebBlocks,
-    msebReadings,
-    msebTariffs,
-    deletedReadingIds,
-    deletedMsebReadingIds,
-    deletedNotificationIds,
-    deletedUserIds,
-    dailyLimits,
-    exceedances,
-    notifications,
-    syncReady,
-  ]);
-
+   
   // Background sync for real-time data across tabs and devices
   useEffect(() => {
     if (!syncReady) return;
