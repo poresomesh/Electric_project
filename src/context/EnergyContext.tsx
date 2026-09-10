@@ -556,7 +556,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       );
     }
     if (remote.meters?.length) setMeters(remote.meters);
-    if (remote.readings) setReadings(remote.readings);
+    if (remote.readings) setReadings([...remote.readings]);
     if (remote.tariff) setTariff(remote.tariff);
     if (remote.msebBlocks?.length) setMsebBlocks(remote.msebBlocks);
     if (remote.msebReadings) setMsebReadings(remote.msebReadings);
@@ -669,11 +669,19 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return meters.filter((m) => m.blockId === currentUser.assignedBlockId);
   }, [meters, isAdmin, isViewer, currentUser.assignedBlockId]);
 
-  const visibleReadings = useMemo(() => {
-    if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
-      return readings;
+ const visibleReadings = useMemo(() => {
+    let list = readings;
+    if (!isAdmin && !isViewer && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      list = readings.filter((r) => r.blockId === currentUser.assignedBlockId);
     }
-    return readings.filter((r) => r.blockId === currentUser.assignedBlockId);
+    // सर्वात नवीन रीडिंग नेहमी वर दिसण्यासाठी सॉर्टिंग
+    return [...list].sort((a, b) => {
+      const dateCmp = (b.readingDate || '').localeCompare(a.readingDate || '');
+      if (dateCmp !== 0) return dateCmp;
+      const timeCmp = (b.readingTime || '').localeCompare(a.readingTime || '');
+      if (timeCmp !== 0) return timeCmp;
+      return (b.createdAt || '').localeCompare(a.createdAt || '');
+    });
   }, [readings, isAdmin, isViewer, currentUser.assignedBlockId]);
 
   const visibleExceedances = useMemo(() => {
