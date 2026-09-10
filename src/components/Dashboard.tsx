@@ -154,6 +154,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const activeMetersCount = meters.filter((m) => activeBlockId === 'ALL' || m.blockId === activeBlockId).length;
     const todayCost = todayUnits * tariff.baseRatePerUnit;
 
+    // Daily Average Load calculation
+    const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
+    const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+    const averageDailyLoad = distinctDates > 0 ? (totalUnitsForAvg / distinctDates) : 0;
+
     return {
       todayUnits,
       yesterdayUnits,
@@ -163,6 +168,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       estimatedBill: billData.totalBill,
       activeMetersCount,
       tariffRate: tariff.baseRatePerUnit,
+      averageDailyLoad,
     };
   }, [readings, activeBlockId, meters, calculateBill, tariff]);
 
@@ -434,7 +440,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Card 4: Registered Meters & Blocks */}
+        {/* Card 4: Daily Average Load (Replaced Active Infrastructure) */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/80 border-slate-800 hover:border-slate-700' 
@@ -443,26 +449,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex items-center justify-between">
             <span className={`text-xs font-semibold uppercase tracking-wider ${
               isDarkMode ? 'text-slate-400' : 'text-slate-500'
-            }`}>Active Infrastructure</span>
+            }`}>Daily Average Load</span>
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-              isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              isDarkMode ? 'bg-cyan-500/10 text-cyan-400' : 'bg-cyan-50 text-cyan-700 border border-cyan-200'
             }`}>
-              <Gauge className="w-4 h-4" />
+              <Activity className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
               isDarkMode ? 'text-white' : 'text-slate-900'
             }`}>
-              {kpis.activeMetersCount}
+              {kpis.averageDailyLoad.toFixed(1)}
             </span>
-            <span className={`text-xs font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>Sub-Meters</span>
+            <span className={`text-xs font-bold ${isDarkMode ? 'text-cyan-400' : 'text-cyan-700'}`}>kWh/day</span>
           </div>
           <div className={`mt-2 flex items-center justify-between text-xs ${
             isDarkMode ? 'text-slate-400' : 'text-slate-500'
           }`}>
-            <span>{blocks.length} Total Campus Blocks</span>
-            <span className={`font-medium ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>100% Online</span>
+            <span>Across Active Days</span>
+            <span className={`font-medium ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>Base Mean</span>
           </div>
         </div>
       </div>
@@ -570,7 +576,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* Quick Day-Wise Consumption Access Banner (High Contrast & Legibility in Light and Dark Mode) */}
+      {/* Quick Day-Wise Consumption Access Banner */}
       <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
         isDarkMode 
           ? 'bg-slate-900 border-slate-700/80 shadow-lg hover:border-cyan-500/50' 
@@ -673,7 +679,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Block Selection Filter inside this section (Requested by user) */}
+            {/* Block Selection Filter inside this section */}
             <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-xs ${
               isDarkMode 
                 ? 'bg-slate-900 border-cyan-500/40 text-slate-200' 

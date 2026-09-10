@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { EnergyProvider, useEnergy } from './context/EnergyContext';
 import { LoginPage } from './components/LoginPage';
 import { Navbar } from './components/Navbar';
@@ -13,18 +13,28 @@ import { EnterReadingModal } from './components/EnterReadingModal';
 import { RoleSwitcherModal } from './components/RoleSwitcherModal';
 import { NotebookDigitizerModal } from './components/NotebookDigitizerModal';
 import { ExceedanceCenter } from './components/ExceedanceCenter';
-import { Zap, ShieldCheck, Cpu } from 'lucide-react';
+import { Zap } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { isDarkMode, isAuthenticated } = useEnergy();
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  
+  // टॅब मेमरी: पेज रीफ्रेश झाल्यावरही MSEB Bill किंवा चालू टॅब तसाच राहील
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    return localStorage.getItem('voltwise_active_tab') || 'dashboard';
+  });
+
   const [isEnterReadingOpen, setIsEnterReadingOpen] = useState<boolean>(false);
   const [readingModalMode, setReadingModalMode] = useState<'single' | 'batch4m'>('single');
   const [selectedBlockForReading, setSelectedBlockForReading] = useState<string | undefined>(undefined);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState<boolean>(false);
   const [isNotebookModalOpen, setIsNotebookModalOpen] = useState<boolean>(false);
 
-  // If user is not authenticated, show LoginPage immediately
+  // चालू टॅब कायम लक्षात ठेवणे
+  useEffect(() => {
+    localStorage.setItem('voltwise_active_tab', activeTab);
+  }, [activeTab]);
+
+  // युझर लॉगिन नसेल तर थेट लॉगिन पेज दाखवणे
   if (!isAuthenticated) {
     return <LoginPage />;
   }
@@ -86,6 +96,7 @@ const AppContent: React.FC = () => {
           <EnergyGraphs initialBlockId={selectedBlockForReading} />
         )}
 
+        {/* MSEB Bill: Admin आणि Normal User दोघांसाठीही कायम दृश्यमान */}
         {activeTab === 'mseb' && (
           <MsebBilling />
         )}

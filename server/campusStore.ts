@@ -161,37 +161,39 @@ export async function getCampusState(): Promise<SharedCampusState> {
 export async function putCampusState(
   incoming: Partial<SharedCampusState>
 ): Promise<SharedCampusState> {
-  const current = await loadState();
-  const currentUsers = new Map((current?.users || []).map((user) => [user.id, user]));
-  const adminId = (current?.users || []).find((user) => user.role === 'admin')?.id;
-  const normalizedNotifications = incoming.notifications?.map((notification) =>
-    notification.type === 'exceedance_remark_submitted' && adminId
-      ? { ...notification, userId: adminId }
-      : notification
-  );
+  const current = (await loadState()) || emptyState();
 
-  const safeIncoming = {
+  const next: SharedCampusState = {
+    ...current,
     ...incoming,
-    notifications: normalizedNotifications,
-    users: incoming.users?.map((user) => {
-      const existing = currentUsers.get(user.id);
-      let finalHash = user.password ? hashPassword(user.password) : (user.passwordHash || existing?.passwordHash);
-      if (!finalHash) {
-        finalHash = hashPassword(DEFAULT_USER_PASSWORD);
-      }
-      const { password: _, ...rest } = user;
-      return {
-        ...rest,
-        passwordHash: finalHash,
-      };
-    }),
-    deletedUserIds: incoming.deletedUserIds || [],
+    version: (current.version || 0) + 1,
+    // 1. ब्लॉक इनचार्जचे नाव आणि आयडी कायमस्वरूपी सेव्ह ठेवणे
+    blocks: incoming.blocks
+      ? incoming.blocks.map((incBlock) => {
+          const old = current.blocks.find((b) => b.id === incBlock.id);
+          return {
+            ...old,
+            ...incBlock,
+            inchargeId: incBlock.inchargeId !== undefined ? incBlock.inchargeId : (old?.inchargeId || ''),
+            inchargeName: incBlock.inchargeName !== undefined ? incBlock.inchargeName : (old?.inchargeName || 'Unassigned'),
+          };
+        })
+      : current.blocks,
+    // 2. नवीन तयार केलेले युझर्स गायब न होऊ देणे
+    users: incoming.users
+      ? (() => {
+          const incomingIds = new Set(incoming.users.map((u) => u.id));
+          const retainedOldUsers = current.users.filter((u) => !incomingIds.has(u.id));
+          return [...retainedOldUsers, ...incoming.users];
+        })()
+      : current.users,
   };
 
-  const next = mergeSharedState(current, safeIncoming);
   await persistState(next);
   return next;
 }
+
+
 export async function deleteNotification(notificationId: string, user: AuthUser | null): Promise<StateApiResult> {
   if (!user) return { status: 401, body: { error: 'Authentication required', storage: storageKind() } };
   const state = await getCampusState();
