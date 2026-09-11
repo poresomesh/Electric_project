@@ -57,38 +57,43 @@ export const Dashboard: React.FC<DashboardProps> = ({
   } = useEnergy();
 
   // इनचार्जचा असाइन केलेला ब्लॉक सुरक्षित शोधणे
-// इनचार्जचा ब्लॉक अचूक शोधणे (सर्व प्रकारे सुरक्षित मॅपिंग)
-  const assignedBlock = useMemo(() => {
+const assignedBlock = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock) return userAssignedBlock;
 
-    // १. युझरच्या assignedBlockId वरून शोधणे (id किंवा code मॅच करणे)
-    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+    const uBlockId = (currentUser?.assignedBlockId || '').trim().toLowerCase();
+    const uname = (currentUser?.username || '').trim().toLowerCase();
+    const uid = (currentUser?.id || '').trim().toLowerCase();
+
+    // १. assignedBlockId वरून शोधणे
+    if (uBlockId && uBlockId !== 'all') {
       const found = blocks.find((b) => 
-        b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase() ||
-        b.code.toLowerCase() === currentUser.assignedBlockId?.toLowerCase()
+        b.id.toLowerCase() === uBlockId || 
+        b.code.toLowerCase() === uBlockId
       );
       if (found) return found;
     }
 
-    // २. ब्लॉकच्या inchargeId वरून युझरचा id किंवा username मॅच करणे
-    const byInchargeId = blocks.find((b) => 
-      (b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase()) ||
-      (b.inchargeId && b.inchargeId.toLowerCase() === currentUser.username.toLowerCase())
+    // २. इनचार्ज आयडीवरून शोधणे
+    const byIncharge = blocks.find((b) => 
+      (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
+      (b.inchargeId && b.inchargeId.toLowerCase() === uname)
     );
-    if (byInchargeId) return byInchargeId;
+    if (byIncharge) return byIncharge;
 
-    // ३. युझरनेमवरून ब्लॉक ओळखणे (उदा. incharge_a असेल तर A Block)
-    const uname = currentUser.username?.toLowerCase() || '';
-    if (uname.includes('_a') || uname.includes('-a')) {
-      const bA = blocks.find((b) => b.id.toLowerCase().includes('a') || b.code.toLowerCase().includes('a'));
-      if (bA) return bA;
+    // ३. युझरनेममधील अक्षरावरून शोधणे (incharge_a -> a, incharge_b -> b, incharge_c -> c, incharge_d -> d)
+    const suffix = uname.split('_')[1] || uname.split('-')[1];
+    if (suffix) {
+      const matched = blocks.find((b) => {
+        const cleanCode = b.code.toLowerCase().replace(/^(blk-|block-)/, '');
+        const cleanId = b.id.toLowerCase().replace(/^(blk-|block-)/, '');
+        return cleanCode === suffix || cleanId === suffix;
+      });
+      if (matched) return matched;
     }
 
-    // ४. इनचार्ज रोल असेल आणि काहीही मॅच झाले नाही तर पहिला ब्लॉक (A Block) सक्तीने देणे
-    return blocks.length > 0 ? blocks[0] : null;
+    return null;
   }, [isAdmin, userAssignedBlock, currentUser, blocks]);
-
   // Active block filter
   const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>(() => {
     if (!isAdmin && assignedBlock) {
@@ -124,11 +129,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Array.from(set).sort().reverse();
   }, [readings]);
 
-  // Filtered readings list
+// Filtered readings list (Dynamic & Strict Per-Block Isolation)
   const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
-const filteredReadings = useMemo(() => {
+
+  const filteredReadings = useMemo(() => {
     return readings.filter((r) => {
-      // १. सर्व प्रकारच्या Block ID / Code ला सपोर्ट करणारा फिल्टर
+      // १. अचूक आणि डायनॅमिक Block filter (कोणत्याही ब्लॉकसाठी)
       if (activeBlockId !== 'ALL') {
         const rBlk = (r.blockId || '').trim().toLowerCase();
         const actBlk = (activeBlockId || '').trim().toLowerCase();
@@ -136,26 +142,32 @@ const filteredReadings = useMemo(() => {
         const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
         const assignedName = (assignedBlock?.name || '').trim().toLowerCase();
 
-        const isMatch = 
+        // थेट ID, Code किंवा Name मॅच करणे
+        const isDirectMatch =
           rBlk === actBlk ||
-          rBlk === assignedCode ||
-          rBlk === assignedId ||
-          rBlk === assignedName ||
-          (actBlk.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a')) ||
-          (assignedCode.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a'));
+          (assignedCode && rBlk === assignedCode) ||
+          (assignedId && rBlk === assignedId) ||
+          (assignedName && rBlk === assignedName);
 
-        if (!isMatch) return false;
+        // सामान्य प्रिफिक्स (block-b / blk-b) मॅच करणे
+        const cleanR = rBlk.replace('block-', '').replace('blk-', '').trim();
+        const cleanAct = actBlk.replace('block-', '').replace('blk-', '').trim();
+        const cleanAssigned = (assignedCode || assignedId).replace('block-', '').replace('blk-', '').trim();
+
+        const isPrefixMatch = cleanR === cleanAct || (cleanAssigned && cleanR === cleanAssigned);
+
+        if (!isDirectMatch && !isPrefixMatch) return false;
       }
 
       // २. Date / Month filter
       if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
-      if (selectedDateFilter.startsWith('MONTH_')) {
+      if (selectedDateFilter && selectedDateFilter.startsWith('MONTH_')) {
         const targetMo = selectedDateFilter.replace('MONTH_', '');
-        if (!r.readingDate.startsWith(targetMo)) return false;
+        if (!r.readingDate?.startsWith(targetMo)) return false;
       }
 
       // ३. Search query
-      if (searchTerm.trim()) {
+      if (searchTerm && searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
         const blockName = blocks.find((b) => b.id.toLowerCase() === (r.blockId || '').toLowerCase())?.name.toLowerCase() || '';
         return (
@@ -176,7 +188,6 @@ const filteredReadings = useMemo(() => {
     const todayDate = getTodayDateStr();
     const yesterdayDate = getYesterdayDateStr();
     const targetMonth = getCurrentMonthStr();
-
 let relevantReadings = readings;
     if (activeBlockId !== 'ALL') {
       relevantReadings = relevantReadings.filter((r) => {
@@ -185,12 +196,17 @@ let relevantReadings = readings;
         const assignedCode = (assignedBlock?.code || '').trim().toLowerCase();
         const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
 
+        // प्रिफिक्स काढून मूळ कोड तपासणे (उदा. 'block-c' -> 'c', 'blk-d' -> 'd')
+        const cleanR = rBlk.replace(/^(blk-|block-)/, '');
+        const cleanAct = actBlk.replace(/^(blk-|block-)/, '');
+        const cleanTarget = (assignedCode || assignedId).replace(/^(blk-|block-)/, '');
+
         return (
           rBlk === actBlk ||
           rBlk === assignedCode ||
           rBlk === assignedId ||
-          (actBlk.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a')) ||
-          (assignedCode.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a'))
+          (cleanR && cleanR === cleanAct) ||
+          (cleanR && cleanTarget && cleanR === cleanTarget)
         );
       });
     }
