@@ -56,28 +56,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     isDarkMode,
   } = useEnergy();
 
-  // LocalStorage मधील डेटा सेफली सिंक करणे
-  const allReadings = useMemo(() => {
-    if (readings && readings.length > 0) return readings;
-    try {
-      const local = localStorage.getItem('voltwise_readings');
-      if (local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.error('LocalStorage parse error:', e);
-    }
-    return [];
-  }, [readings]);
-
-  // ब्लॉक आयडी / कोड नॉर्मलाइज करणारे हेल्पर (उदा. 'block-b' -> 'b', 'blk-c' -> 'c')
+  // ब्लॉकचे अक्षर शोधणारा हेल्पर (उदा. 'block-b' -> 'b', 'blk-b' -> 'b')
   const normalizeBlock = (val?: string) => {
     if (!val) return '';
     return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
   };
 
-  // १. इनचार्जचा अचूक ब्लॉक शोधणे (A, B, C, D सर्वांसाठी १००% अचूक)
+  // १. इनचार्जचा अचूक ब्लॉक शोधणे (A, B, C, D सर्वांसाठी १००% अचूक मॅपिंग)
   const assignedBlock = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock) return userAssignedBlock;
@@ -86,7 +71,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const uname = (currentUser?.username || '').trim().toLowerCase();
     const uid = (currentUser?.id || '').trim().toLowerCase();
 
-    // युझरवरून ब्लॉकचे अक्षर शोधणे (उदा. incharge_b -> 'b')
     let targetLetter = '';
     const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
     if (match) {
@@ -95,7 +79,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       targetLetter = normalizeBlock(uBlockId);
     }
 
-    // blocks लिस्ट मधून अचूक ब्लॉक शोधणे
     if (blocks && blocks.length > 0) {
       const found = blocks.find((b) => {
         const bId = (b.id || '').toLowerCase();
@@ -115,7 +98,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (byIncharge) return byIncharge;
     }
 
-    // सुरक्षित फॉलबॅक: blocks लोड व्हायला उशीर झाला तरी स्क्रीन Facility-Wide वर जाणार नाही
     if (targetLetter) {
       const upper = targetLetter.toUpperCase();
       return {
@@ -129,7 +111,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return null;
   }, [isAdmin, userAssignedBlock, currentUser, blocks]);
 
-  // २. ॲक्टिव्ह ब्लॉक आयडी: इनचार्जसाठी कायम त्याचाच ब्लॉक, ॲडमिनसाठी सिलेक्ट केलेला
+  // २. ॲक्टिव्ह ब्लॉक आयडी: इनचार्जसाठी सक्तीने त्याचाच ब्लॉक, ॲडमिनसाठी सिलेक्ट केलेला
   const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : 'ALL';
 
   const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>(() => {
@@ -145,15 +127,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('ALL');
-  
-  // In-app modal for clearing all readings safely
   const [showClearConfirmModal, setShowClearConfirmModal] = useState<boolean>(false);
   const [toastFeedbackMsg, setToastFeedbackMsg] = useState<string>('');
 
   // Extract distinct months from readings
   const availableMonths = useMemo(() => {
     const set = new Set<string>();
-    allReadings.forEach((r) => {
+    readings.forEach((r) => {
       if (r.readingDate && r.readingDate.length >= 7) {
         set.add(r.readingDate.substring(0, 7));
       }
@@ -162,40 +142,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].forEach((m) => set.add(m));
     }
     return Array.from(set).sort().reverse();
-  }, [allReadings]);
+  }, [readings]);
 
-  // ३. Filtered readings: इनचार्जला फक्त त्याचाच डेटा दिसेल
+  // ३. तक्त्यातील नोंदी फिल्टर करणे (नवीन ॲड केलेली नोंद तात्काळ दिसणे)
   const filteredReadings = useMemo(() => {
-    return allReadings.filter((r) => {
-      // ब्लॉक मॅचिंग
-      const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
+    const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
+
+    return readings.filter((r) => {
       if (currentFilter !== 'ALL') {
-        const rId = (r.blockId || '').toLowerCase().trim();
-        const targetId = currentFilter.toLowerCase().trim();
-        const targetCode = (assignedBlock?.code || '').toLowerCase().trim();
-
         const rNorm = normalizeBlock(r.blockId);
-        const targetNorm = normalizeBlock(assignedBlock?.code || assignedBlock?.id || currentFilter);
+        const activeNorm = normalizeBlock(currentFilter);
+        const assignedNorm = normalizeBlock(assignedBlock?.id || assignedBlock?.code);
+        const targetNorm = assignedNorm || activeNorm;
 
-        const isMatch = 
-          rId === targetId ||
-          (targetCode && rId === targetCode) ||
-          (rNorm && targetNorm && rNorm === targetNorm);
-
-        if (!isMatch) return false;
+        if (rNorm !== targetNorm && (r.blockId || '').toLowerCase() !== currentFilter.toLowerCase()) {
+          return false;
+        }
       }
 
-      // Date / Month filter
       if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
       if (selectedDateFilter && selectedDateFilter.startsWith('MONTH_')) {
         const targetMo = selectedDateFilter.replace('MONTH_', '');
         if (!r.readingDate?.startsWith(targetMo)) return false;
       }
 
-      // Search query
       if (searchTerm && searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
-        const blockName = blocks.find((b) => b.id.toLowerCase() === (r.blockId || '').toLowerCase())?.name.toLowerCase() || '';
+        const blockName = blocks.find((b) => normalizeBlock(b.id) === normalizeBlock(r.blockId))?.name.toLowerCase() || '';
         return (
           (r.meterNumber && r.meterNumber.toLowerCase().includes(query)) ||
           (r.enteredByName && r.enteredByName.toLowerCase().includes(query)) ||
@@ -207,19 +180,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       return true;
     });
-  }, [allReadings, isAdmin, assignedBlock, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
+  }, [readings, isAdmin, assignedBlock, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
-  // ४. Overall KPIs calculation: इनचार्जसाठी फक्त त्याच्या ब्लॉकची आकडेवारी
+  // ४. Overall KPIs: Today Units, Month Units, Bill त्वरित अपडेट होणे
   const kpis = useMemo(() => {
     const todayDate = getTodayDateStr();
     const yesterdayDate = getYesterdayDateStr();
     const targetMonth = getCurrentMonthStr();
     const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
+    const targetNorm = normalizeBlock(assignedBlock?.code || assignedBlock?.id || currentFilter);
 
-    let relevantReadings = allReadings;
+    let relevantReadings = readings;
     if (currentFilter !== 'ALL') {
-      const targetNorm = normalizeBlock(assignedBlock?.code || assignedBlock?.id || currentFilter);
-      relevantReadings = relevantReadings.filter((r) => {
+      relevantReadings = readings.filter((r) => {
         const rNorm = normalizeBlock(r.blockId);
         return rNorm === targetNorm || (r.blockId || '').toLowerCase() === currentFilter.toLowerCase();
       });
@@ -227,19 +200,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     const todayUnits = relevantReadings
       .filter((r) => r.readingDate === todayDate)
-      .reduce((sum, r) => sum + r.unitsConsumed, 0);
+      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
     const yesterdayUnits = relevantReadings
       .filter((r) => r.readingDate === yesterdayDate)
-      .reduce((sum, r) => sum + r.unitsConsumed, 0);
+      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
     const monthUnits = relevantReadings
-      .filter((r) => r.readingDate.startsWith(targetMonth))
-      .reduce((sum, r) => sum + r.unitsConsumed, 0);
+      .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
+      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-    const allBlocksMonthUnits = allReadings
-      .filter((r) => r.readingDate.startsWith(targetMonth))
-      .reduce((sum, r) => sum + r.unitsConsumed, 0);
+    const allBlocksMonthUnits = readings
+      .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
+      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
     const billData = calculateBill({
       blockId: currentFilter,
@@ -248,14 +221,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     const activeMetersCount = meters.filter((m) => 
-      currentFilter === 'ALL' || normalizeBlock(m.blockId) === normalizeBlock(currentFilter)
+      currentFilter === 'ALL' || normalizeBlock(m.blockId) === targetNorm
     ).length;
 
     const todayCost = todayUnits * tariff.baseRatePerUnit;
 
     const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
-    const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
-    const averageDailyLoad = distinctDates > 0 ? (totalUnitsForAvg / distinctDates) : 0;
+    const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
+    const averageDailyLoad = distinctDates > 0 ? +(totalUnitsForAvg / distinctDates).toFixed(1) : 0;
 
     return {
       todayUnits,
@@ -268,13 +241,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       tariffRate: tariff.baseRatePerUnit,
       averageDailyLoad,
     };
-  }, [allReadings, isAdmin, assignedBlock, selectedBlockFilter, meters, calculateBill, tariff]);
+  }, [readings, isAdmin, assignedBlock, selectedBlockFilter, meters, calculateBill, tariff]);
 
   // Export readings as CSV
   const handleExportCSV = () => {
     const headers = ['Date', 'Time', 'Block', 'Meter No', 'Previous (kWh)', 'Current (kWh)', 'Units Consumed', 'Multiplier', 'Estimated Cost', 'Entered By', 'Notes'];
     const rows = filteredReadings.map((r) => {
-      const bName = blocks.find((b) => b.id === r.blockId)?.name || r.blockId;
+      const bName = blocks.find((b) => normalizeBlock(b.id) === normalizeBlock(r.blockId))?.name || r.blockId;
       const cost = (r.unitsConsumed * tariff.baseRatePerUnit).toFixed(2);
       return [
         r.readingDate,
@@ -598,8 +571,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {blocks.map((b) => {
-              const bReadings = allReadings.filter((r) => normalizeBlock(r.blockId) === normalizeBlock(b.id));
-              const bUnits = bReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+              const bReadings = readings.filter((r) => normalizeBlock(r.blockId) === normalizeBlock(b.id));
+              const bUnits = bReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
               const bMeters = meters.filter((m) => normalizeBlock(m.blockId) === normalizeBlock(b.id));
               const bCost = bUnits * tariff.baseRatePerUnit;
 
@@ -873,7 +846,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </button>
 
             {/* Clear All Readings button (फक्त ॲडमिनसाठी सुरक्षित) */}
-            {isAdmin && allReadings.length > 0 && (
+            {isAdmin && readings.length > 0 && (
               <button
                 onClick={() => setShowClearConfirmModal(true)}
                 title="Delete all recorded readings"
@@ -921,7 +894,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Empty State vs Table */}
-        {allReadings.length === 0 ? (
+        {filteredReadings.length === 0 ? (
           <div className="py-12 px-6 text-center space-y-4">
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto border ${
               isDarkMode ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-cyan-50 border-cyan-200 text-cyan-600'
@@ -984,7 +957,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <tbody className={`divide-y font-sans ${isDarkMode ? 'divide-slate-800/60' : 'divide-slate-200'}`}>
                 {filteredReadings.map((reading) => {
                   const block = blocks.find((b) => normalizeBlock(b.id) === normalizeBlock(reading.blockId));
-                  const cost = reading.unitsConsumed * tariff.baseRatePerUnit;
+                  const cost = (Number(reading.unitsConsumed) || 0) * tariff.baseRatePerUnit;
                   const isSpecialExample = reading.notes && reading.notes.includes('09.08.26 reading 200');
 
                   return (
@@ -1117,7 +1090,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-              Are you sure you want to delete all <strong>{allReadings.length}</strong> recorded meter readings from the system?
+              Are you sure you want to delete all <strong>{readings.length}</strong> recorded meter readings from the system?
               This will wipe all data and reset meter baselines so you can manually enter your last 4 months of records.
             </p>
 

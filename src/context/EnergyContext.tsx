@@ -172,6 +172,12 @@ const EnergyContext = createContext<EnergyContextType | undefined>(undefined);
 
 const STORAGE_KEY_PREFIX = 'voltwise_energy_';
 
+// ब्लॉक आयडीचे मूळ अक्षर (उदा. 'block-b' -> 'b', 'blk-b' -> 'b') काढणारा सुरक्षित हेल्पर
+const normalizeBlockStr = (val?: string) => {
+  if (!val) return '';
+  return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
+};
+
 export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('voltwise_theme') as ThemeMode;
@@ -279,7 +285,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   });
 
   const [readings, setReadings] = useState<MeterReading[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}readings`);
+    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}readings`) || localStorage.getItem('voltwise_readings');
     return saved ? JSON.parse(saved) : INITIAL_READINGS;
   });
 
@@ -445,6 +451,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(readings));
+    localStorage.setItem('voltwise_readings', JSON.stringify(readings));
   }, [readings]);
 
   useEffect(() => {
@@ -570,7 +577,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (remote.notifications) setNotifications(remote.notifications);
   };
 
-  // 1. Initial Load: Always load latest state from Neon DB directly
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -588,14 +594,12 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, []);
 
-  // 2. Realtime Multi-Device Poller (Syncs Mobile & Laptop Automatically)
   useEffect(() => {
     if (!syncReady) return;
     const timer = window.setInterval(async () => {
       const remote = await fetchSharedState();
       if (!remote) return;
 
-      // जर सर्व्हरचे व्हर्जन वेगळे असेल किंवा रिडिंग्जची संख्या वाढली असेल, तर स्क्रीन अपडेट करा
       const isNewVersion = (remote.version || 0) !== lastSeenVersionRef.current;
       const isNewReadings = (remote.readings?.length || 0) !== readings.length;
 
@@ -614,14 +618,17 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const userAssignedBlock = useMemo(() => {
     if (!currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') return null;
-    return blocks.find((b) => b.id === currentUser.assignedBlockId) || null;
+    const norm = normalizeBlockStr(currentUser.assignedBlockId);
+    return blocks.find((b) => b.id === currentUser.assignedBlockId || normalizeBlockStr(b.id) === norm || normalizeBlockStr(b.code) === norm) || null;
   }, [currentUser, blocks]);
 
   const canEnterReading = (blockId?: string) => {
     if (isAdmin) return true;
     if (isBlockIncharge) {
       if (!blockId) return true;
-      return currentUser.assignedBlockId === blockId;
+      const bNorm = normalizeBlockStr(blockId);
+      const uNorm = normalizeBlockStr(currentUser.assignedBlockId);
+      return bNorm === uNorm || currentUser.assignedBlockId === blockId;
     }
     return false;
   };
@@ -655,41 +662,54 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentUser(INITIAL_USERS.find((user) => user.role === 'viewer') || INITIAL_USERS[0]);
   };
 
-  // 1. फक्त लॉगिन असलेल्या ब्लॉक इनचार्जला त्याच्याच ब्लॉकचा डेटा दाखवा
+  // १. इनचार्जला फक्त त्याचाच ब्लॉक दिसणे (A, B, C, D कडक आयसोलेशन)
   const visibleBlocks = useMemo(() => {
     if (isAdmin || isViewer) return blocks;
 
-    // १. युझरच्या assignedBlockId वरून शोधणे (केस इन्सेन्सिटिव्ह)
-    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      const match = blocks.filter(
-        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase()
-      );
-      if (match.length > 0) return match;
+    const uBlockId = currentUser.assignedBlockId;
+    const uname = (currentUser.username || '').toLowerCase();
+    const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
+    const targetLetter = match ? match[1] : normalizeBlockStr(uBlockId);
+
+    if (targetLetter && targetLetter !== 'all') {
+      const matched = blocks.filter((b) => {
+        const bNorm = normalizeBlockStr(b.id);
+        const cNorm = normalizeBlockStr(b.code);
+        return bNorm === targetLetter || cNorm === targetLetter;
+      });
+      if (matched.length > 0) return matched;
     }
 
-    // २. युझरच्या स्वतःच्या आयडीवरून ब्लॉक शोधणे
     const byInchargeId = blocks.filter(
       (b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase()
     );
     if (byInchargeId.length > 0) return byInchargeId;
 
-    // ३. काहीही मॅच झाले नाही तरी रिकामा न ठेवता पहिला उपलब्ध ब्लॉक देणे
     return blocks.length > 0 ? [blocks[0]] : [];
   }, [blocks, isAdmin, isViewer, currentUser]);
 
   const visibleMeters = useMemo(() => {
     if (isAdmin || isViewer) return meters;
 
-    const allowedBlockIds = new Set(visibleBlocks.map((b) => b.id.toLowerCase()));
-    return meters.filter((m) => allowedBlockIds.has(m.blockId.toLowerCase()));
+    const allowedBlockLetters = new Set(visibleBlocks.map((b) => normalizeBlockStr(b.id)));
+    return meters.filter((m) => allowedBlockLetters.has(normalizeBlockStr(m.blockId)));
   }, [meters, visibleBlocks, isAdmin, isViewer]);
 
+  // २. अचूक रीडिंग्ज सिंक: B, C, D च्या सर्व नोंदी डॅशबोर्ड व सर्व पेजवर तात्काळ दाखवणे
   const visibleReadings = useMemo(() => {
     let list = readings;
-    if (!isAdmin) {
-      if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-        list = readings.filter((r) => r.blockId === currentUser.assignedBlockId);
-      } else if (!isViewer) {
+    if (!isAdmin && !isViewer) {
+      const uBlockId = currentUser.assignedBlockId;
+      const uname = (currentUser.username || '').toLowerCase();
+      const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
+      const targetLetter = match ? match[1] : normalizeBlockStr(uBlockId);
+
+      if (targetLetter && targetLetter !== 'all') {
+        list = readings.filter((r) => {
+          const rLetter = normalizeBlockStr(r.blockId);
+          return rLetter === targetLetter || (r.blockId || '').toLowerCase() === (uBlockId || '').toLowerCase();
+        });
+      } else {
         list = [];
       }
     }
@@ -701,30 +721,33 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (timeCmp !== 0) return timeCmp;
       return (b.createdAt || '').localeCompare(a.createdAt || '');
     });
-  }, [readings, isAdmin, isViewer, currentUser.assignedBlockId]);
+  }, [readings, isAdmin, isViewer, currentUser]);
 
   const visibleExceedances = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
       return exceedances;
     }
-    return exceedances.filter((item) => item.blockId === currentUser.assignedBlockId);
+    const targetNorm = normalizeBlockStr(currentUser.assignedBlockId);
+    return exceedances.filter((item) => normalizeBlockStr(item.blockId) === targetNorm);
   }, [exceedances, isAdmin, isViewer, currentUser.assignedBlockId]);
 
   const visibleDailyLimits = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
       return dailyLimits;
     }
-    return dailyLimits.filter((limit) => limit.blockId === currentUser.assignedBlockId);
+    const targetNorm = normalizeBlockStr(currentUser.assignedBlockId);
+    return dailyLimits.filter((limit) => normalizeBlockStr(limit.blockId) === targetNorm);
   }, [dailyLimits, isAdmin, isViewer, currentUser.assignedBlockId]);
 
   const visibleNotifications = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
       return notifications;
     }
+    const targetNorm = normalizeBlockStr(currentUser.assignedBlockId);
     return notifications.filter((notification) =>
-      notification.userId ? notification.userId === currentUser.id : notification.blockId === currentUser.assignedBlockId
+      notification.userId ? notification.userId === currentUser.id : normalizeBlockStr(notification.blockId) === targetNorm
     );
-  }, [notifications, isAdmin, isViewer, currentUser.assignedBlockId]);
+  }, [notifications, isAdmin, isViewer, currentUser]);
 
   const updateDailyLimit = (blockId: string, dailyLimitUnits: number): boolean => {
     if (!isAdmin || !Number.isFinite(dailyLimitUnits) || dailyLimitUnits <= 0) {
@@ -912,7 +935,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         : b
     );
 
-    // १. आधी थेट डेटाबेसमध्ये सेव्ह होईपर्यंत 'await' करा
     const saved = await saveSharedState({
       users: updatedUsers,
       blocks: updatedBlocks,
@@ -923,7 +945,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setLastSyncedAt(new Date());
     }
 
-    // २. डेटाबेस सेव्ह झाल्यावरच लोकल स्टेट बदला
     setUsers(updatedUsers);
     setBlocks(updatedBlocks);
 
@@ -1035,7 +1056,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return true;
   };
 
-  // Add Meter Reading: Guaranteed Async Persistence directly into Neon PostgreSQL
+  // Add Meter Reading
   const addReading = async ({
     blockId,
     meterId,
@@ -1133,7 +1154,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       createdAt: new Date().toISOString(),
     };
 
-const updatedReadings = [newReading, ...readings];
+    const updatedReadings = [newReading, ...readings];
     const updatedMeters = meters.map((m) =>
       m.id === meterId
         ? {
@@ -1145,7 +1166,6 @@ const updatedReadings = [newReading, ...readings];
         : m
     );
 
-    // १. ब्राऊझरच्या LocalStorage मध्ये तात्काळ सेव्ह करणे (डेटा कधीही गहाळ होणार नाही)
     try {
       localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
       localStorage.setItem('voltwise_meters', JSON.stringify(updatedMeters));
@@ -1153,11 +1173,9 @@ const updatedReadings = [newReading, ...readings];
       console.error('LocalStorage persist error:', lsErr);
     }
 
-    // २. React State त्वरित अपडेट करणे (डॅशबोर्डवर लगेच दिसण्यासाठी)
     setReadings(updatedReadings);
     setMeters(updatedMeters);
 
-    // ३. Neon Database ला बॅकग्राउंडमध्ये सेव्ह करणे (एरर आला तरी युझरचा डेटा अडकणार नाही)
     try {
       saveSharedState({
         readings: updatedReadings,
@@ -1365,6 +1383,7 @@ const updatedReadings = [newReading, ...readings];
     saveSharedState({ tariff: newTariff });
   };
 
+  // ३. Calculate Bill: सर्व ब्लॉक्ससाठी अचूक गणना (B Block / C Block साठी योग्य युनिट्स व बिल येणे)
   const calculateBill = ({
     blockId,
     periodType,
@@ -1374,7 +1393,6 @@ const updatedReadings = [newReading, ...readings];
     periodType: 'day' | 'week' | 'month' | 'year';
     referenceDate?: string;
   }): BillCalculation => {
-    // इनचार्ज असेल तर 'ALL' ऐवजी सक्तीने त्याचाच ब्लॉक घ्या
     let effectiveBlockId = blockId;
     if (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
       effectiveBlockId = currentUser.assignedBlockId;
@@ -1385,9 +1403,11 @@ const updatedReadings = [newReading, ...readings];
     let filteredReadings = readings;
 
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      filteredReadings = readings.filter(
-        (r) => r.blockId.toLowerCase() === effectiveBlockId?.toLowerCase()
-      );
+      const targetLetter = normalizeBlockStr(effectiveBlockId);
+      filteredReadings = readings.filter((r) => {
+        const rLetter = normalizeBlockStr(r.blockId);
+        return rLetter === targetLetter || (r.blockId || '').toLowerCase() === effectiveBlockId?.toLowerCase();
+      });
     } else if (!isAdmin) {
       filteredReadings = visibleReadings;
     }
@@ -1416,12 +1436,12 @@ const updatedReadings = [newReading, ...readings];
       endDate = `${targetMonth}-31`;
       const monthName = refDate.toLocaleString('default', { month: 'long', year: 'numeric' });
       periodLabel = `${monthName}`;
-      filteredReadings = filteredReadings.filter((r) => r.readingDate.startsWith(targetMonth));
+      filteredReadings = filteredReadings.filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth));
     } else {
       startDate = `${targetYear}-01-01`;
       endDate = `${targetYear}-12-31`;
       periodLabel = `Year ${targetYear}`;
-      filteredReadings = filteredReadings.filter((r) => r.readingDate.startsWith(`${targetYear}`));
+      filteredReadings = filteredReadings.filter((r) => r.readingDate && r.readingDate.startsWith(`${targetYear}`));
     }
 
     const totalUnits = filteredReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
@@ -1439,7 +1459,10 @@ const updatedReadings = [newReading, ...readings];
 
     const totalBill = +(energyCharges + fixedCharges + taxesAndDuties).toFixed(2);
     const averageRatePerUnit = unitsConsumed > 0 ? +(totalBill / unitsConsumed).toFixed(2) : tariff.baseRatePerUnit;
-    const blockName = effectiveBlockId && effectiveBlockId !== 'ALL' ? blocks.find((b) => b.id === effectiveBlockId)?.name || 'Block' : 'All Department Blocks';
+    
+    const targetLetter = normalizeBlockStr(effectiveBlockId);
+    const matchedBlock = blocks.find((b) => normalizeBlockStr(b.id) === targetLetter || b.id.toLowerCase() === effectiveBlockId?.toLowerCase());
+    const blockName = effectiveBlockId && effectiveBlockId !== 'ALL' ? (matchedBlock?.name || `${targetLetter.toUpperCase()} Block`) : 'All Department Blocks';
 
     return {
       blockId: effectiveBlockId || 'ALL',
@@ -1466,7 +1489,8 @@ const updatedReadings = [newReading, ...readings];
 
     let dayReadings = visibleReadings.filter((r) => r.readingDate === date);
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      dayReadings = dayReadings.filter((r) => r.blockId === effectiveBlockId);
+      const targetNorm = normalizeBlockStr(effectiveBlockId);
+      dayReadings = dayReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
     }
     const totalDayUnits = dayReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
 
@@ -1515,7 +1539,8 @@ const updatedReadings = [newReading, ...readings];
 
       let dayReadings = visibleReadings.filter((r) => r.readingDate === dateStr);
       if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-        dayReadings = dayReadings.filter((r) => r.blockId === effectiveBlockId);
+        const targetNorm = normalizeBlockStr(effectiveBlockId);
+        dayReadings = dayReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
       }
 
       const units = dayReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
@@ -1538,7 +1563,8 @@ const updatedReadings = [newReading, ...readings];
     const targetMonth = referenceDate.slice(0, 7) || getCurrentMonthStr();
     let monthReadings = visibleReadings.filter((r) => r.readingDate.startsWith(targetMonth));
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      monthReadings = monthReadings.filter((r) => r.blockId === effectiveBlockId);
+      const targetNorm = normalizeBlockStr(effectiveBlockId);
+      monthReadings = monthReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
     }
 
     const refDateObj = new Date(referenceDate);
@@ -1580,7 +1606,8 @@ const updatedReadings = [newReading, ...readings];
 
       let monthReadings = visibleReadings.filter((r) => r.readingDate.startsWith(targetPrefix));
       if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-        monthReadings = monthReadings.filter((r) => r.blockId === effectiveBlockId);
+        const targetNorm = normalizeBlockStr(effectiveBlockId);
+        monthReadings = monthReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
       }
 
       const units = monthReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
