@@ -56,8 +56,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
     isDarkMode,
   } = useEnergy();
 
-  // इनचार्जचा असाइन केलेला ब्लॉक सुरक्षित शोधणे
-const assignedBlock = useMemo(() => {
+  // LocalStorage मधील डेटा सेफली सिंक करणे
+  const allReadings = useMemo(() => {
+    if (readings && readings.length > 0) return readings;
+    try {
+      const local = localStorage.getItem('voltwise_readings');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error('LocalStorage parse error:', e);
+    }
+    return [];
+  }, [readings]);
+
+  // ब्लॉक आयडी / कोड नॉर्मलाइज करणारे हेल्पर (उदा. 'block-b' -> 'b', 'blk-c' -> 'c')
+  const normalizeBlock = (val?: string) => {
+    if (!val) return '';
+    return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
+  };
+
+  // १. इनचार्जचा अचूक ब्लॉक शोधणे (A, B, C, D सर्वांसाठी १००% अचूक)
+  const assignedBlock = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock) return userAssignedBlock;
 
@@ -65,48 +86,62 @@ const assignedBlock = useMemo(() => {
     const uname = (currentUser?.username || '').trim().toLowerCase();
     const uid = (currentUser?.id || '').trim().toLowerCase();
 
-    // १. assignedBlockId वरून शोधणे
-    if (uBlockId && uBlockId !== 'all') {
-      const found = blocks.find((b) => 
-        b.id.toLowerCase() === uBlockId || 
-        b.code.toLowerCase() === uBlockId
-      );
-      if (found) return found;
+    // युझरवरून ब्लॉकचे अक्षर शोधणे (उदा. incharge_b -> 'b')
+    let targetLetter = '';
+    const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
+    if (match) {
+      targetLetter = match[1].toLowerCase();
+    } else if (uBlockId && uBlockId !== 'all') {
+      targetLetter = normalizeBlock(uBlockId);
     }
 
-    // २. इनचार्ज आयडीवरून शोधणे
-    const byIncharge = blocks.find((b) => 
-      (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
-      (b.inchargeId && b.inchargeId.toLowerCase() === uname)
-    );
-    if (byIncharge) return byIncharge;
-
-    // ३. युझरनेममधील अक्षरावरून शोधणे (incharge_a -> a, incharge_b -> b, incharge_c -> c, incharge_d -> d)
-    const suffix = uname.split('_')[1] || uname.split('-')[1];
-    if (suffix) {
-      const matched = blocks.find((b) => {
-        const cleanCode = b.code.toLowerCase().replace(/^(blk-|block-)/, '');
-        const cleanId = b.id.toLowerCase().replace(/^(blk-|block-)/, '');
-        return cleanCode === suffix || cleanId === suffix;
+    // blocks लिस्ट मधून अचूक ब्लॉक शोधणे
+    if (blocks && blocks.length > 0) {
+      const found = blocks.find((b) => {
+        const bId = (b.id || '').toLowerCase();
+        const bCode = (b.code || '').toLowerCase();
+        return (
+          bId === uBlockId ||
+          bCode === uBlockId ||
+          (targetLetter && (normalizeBlock(bId) === targetLetter || normalizeBlock(bCode) === targetLetter))
+        );
       });
-      if (matched) return matched;
+      if (found) return found;
+
+      const byIncharge = blocks.find((b) => 
+        (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
+        (b.inchargeId && b.inchargeId.toLowerCase() === uname)
+      );
+      if (byIncharge) return byIncharge;
+    }
+
+    // सुरक्षित फॉलबॅक: blocks लोड व्हायला उशीर झाला तरी स्क्रीन Facility-Wide वर जाणार नाही
+    if (targetLetter) {
+      const upper = targetLetter.toUpperCase();
+      return {
+        id: `block-${targetLetter}`,
+        code: `BLK-${upper}`,
+        name: `${upper} Block`,
+        color: upper === 'A' ? '#06b6d4' : upper === 'B' ? '#3b82f6' : upper === 'C' ? '#10b981' : '#f59e0b',
+      } as Block;
     }
 
     return null;
   }, [isAdmin, userAssignedBlock, currentUser, blocks]);
-  // Active block filter
+
+  // २. ॲक्टिव्ह ब्लॉक आयडी: इनचार्जसाठी कायम त्याचाच ब्लॉक, ॲडमिनसाठी सिलेक्ट केलेला
+  const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : 'ALL';
+
   const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>(() => {
-    if (!isAdmin && assignedBlock) {
-      return assignedBlock.id;
-    }
+    if (!isAdmin && assignedBlock) return assignedBlock.id;
     return 'ALL';
   });
 
   useEffect(() => {
-    if (!isAdmin && assignedBlock && selectedBlockFilter !== assignedBlock.id) {
+    if (!isAdmin && assignedBlock) {
       setSelectedBlockFilter(assignedBlock.id);
     }
-  }, [isAdmin, assignedBlock, selectedBlockFilter]);
+  }, [isAdmin, assignedBlock]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('ALL');
@@ -118,55 +153,46 @@ const assignedBlock = useMemo(() => {
   // Extract distinct months from readings
   const availableMonths = useMemo(() => {
     const set = new Set<string>();
-    readings.forEach((r) => {
+    allReadings.forEach((r) => {
       if (r.readingDate && r.readingDate.length >= 7) {
         set.add(r.readingDate.substring(0, 7));
       }
     });
     if (set.size === 0) {
-      ['2026-05', '2026-06', '2026-07', '2026-08'].forEach((m) => set.add(m));
+      ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].forEach((m) => set.add(m));
     }
     return Array.from(set).sort().reverse();
-  }, [readings]);
+  }, [allReadings]);
 
-// Filtered readings list (Dynamic & Strict Per-Block Isolation)
-  const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
-
+  // ३. Filtered readings: इनचार्जला फक्त त्याचाच डेटा दिसेल
   const filteredReadings = useMemo(() => {
-    return readings.filter((r) => {
-      // १. अचूक आणि डायनॅमिक Block filter (कोणत्याही ब्लॉकसाठी)
-      if (activeBlockId !== 'ALL') {
-        const rBlk = (r.blockId || '').trim().toLowerCase();
-        const actBlk = (activeBlockId || '').trim().toLowerCase();
-        const assignedCode = (assignedBlock?.code || '').trim().toLowerCase();
-        const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
-        const assignedName = (assignedBlock?.name || '').trim().toLowerCase();
+    return allReadings.filter((r) => {
+      // ब्लॉक मॅचिंग
+      const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
+      if (currentFilter !== 'ALL') {
+        const rId = (r.blockId || '').toLowerCase().trim();
+        const targetId = currentFilter.toLowerCase().trim();
+        const targetCode = (assignedBlock?.code || '').toLowerCase().trim();
 
-        // थेट ID, Code किंवा Name मॅच करणे
-        const isDirectMatch =
-          rBlk === actBlk ||
-          (assignedCode && rBlk === assignedCode) ||
-          (assignedId && rBlk === assignedId) ||
-          (assignedName && rBlk === assignedName);
+        const rNorm = normalizeBlock(r.blockId);
+        const targetNorm = normalizeBlock(assignedBlock?.code || assignedBlock?.id || currentFilter);
 
-        // सामान्य प्रिफिक्स (block-b / blk-b) मॅच करणे
-        const cleanR = rBlk.replace('block-', '').replace('blk-', '').trim();
-        const cleanAct = actBlk.replace('block-', '').replace('blk-', '').trim();
-        const cleanAssigned = (assignedCode || assignedId).replace('block-', '').replace('blk-', '').trim();
+        const isMatch = 
+          rId === targetId ||
+          (targetCode && rId === targetCode) ||
+          (rNorm && targetNorm && rNorm === targetNorm);
 
-        const isPrefixMatch = cleanR === cleanAct || (cleanAssigned && cleanR === cleanAssigned);
-
-        if (!isDirectMatch && !isPrefixMatch) return false;
+        if (!isMatch) return false;
       }
 
-      // २. Date / Month filter
+      // Date / Month filter
       if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
       if (selectedDateFilter && selectedDateFilter.startsWith('MONTH_')) {
         const targetMo = selectedDateFilter.replace('MONTH_', '');
         if (!r.readingDate?.startsWith(targetMo)) return false;
       }
 
-      // ३. Search query
+      // Search query
       if (searchTerm && searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
         const blockName = blocks.find((b) => b.id.toLowerCase() === (r.blockId || '').toLowerCase())?.name.toLowerCase() || '';
@@ -181,33 +207,21 @@ const assignedBlock = useMemo(() => {
 
       return true;
     });
-  }, [readings, activeBlockId, assignedBlock, selectedDateFilter, searchTerm, blocks]);
+  }, [allReadings, isAdmin, assignedBlock, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
-  // Overall KPIs calculation
+  // ४. Overall KPIs calculation: इनचार्जसाठी फक्त त्याच्या ब्लॉकची आकडेवारी
   const kpis = useMemo(() => {
     const todayDate = getTodayDateStr();
     const yesterdayDate = getYesterdayDateStr();
     const targetMonth = getCurrentMonthStr();
-let relevantReadings = readings;
-    if (activeBlockId !== 'ALL') {
+    const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
+
+    let relevantReadings = allReadings;
+    if (currentFilter !== 'ALL') {
+      const targetNorm = normalizeBlock(assignedBlock?.code || assignedBlock?.id || currentFilter);
       relevantReadings = relevantReadings.filter((r) => {
-        const rBlk = (r.blockId || '').trim().toLowerCase();
-        const actBlk = (activeBlockId || '').trim().toLowerCase();
-        const assignedCode = (assignedBlock?.code || '').trim().toLowerCase();
-        const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
-
-        // प्रिफिक्स काढून मूळ कोड तपासणे (उदा. 'block-c' -> 'c', 'blk-d' -> 'd')
-        const cleanR = rBlk.replace(/^(blk-|block-)/, '');
-        const cleanAct = actBlk.replace(/^(blk-|block-)/, '');
-        const cleanTarget = (assignedCode || assignedId).replace(/^(blk-|block-)/, '');
-
-        return (
-          rBlk === actBlk ||
-          rBlk === assignedCode ||
-          rBlk === assignedId ||
-          (cleanR && cleanR === cleanAct) ||
-          (cleanR && cleanTarget && cleanR === cleanTarget)
-        );
+        const rNorm = normalizeBlock(r.blockId);
+        return rNorm === targetNorm || (r.blockId || '').toLowerCase() === currentFilter.toLowerCase();
       });
     }
 
@@ -223,17 +237,20 @@ let relevantReadings = readings;
       .filter((r) => r.readingDate.startsWith(targetMonth))
       .reduce((sum, r) => sum + r.unitsConsumed, 0);
 
-    const allBlocksMonthUnits = readings
+    const allBlocksMonthUnits = allReadings
       .filter((r) => r.readingDate.startsWith(targetMonth))
       .reduce((sum, r) => sum + r.unitsConsumed, 0);
 
     const billData = calculateBill({
-      blockId: activeBlockId,
+      blockId: currentFilter,
       periodType: 'month',
       referenceDate: todayDate,
     });
 
-    const activeMetersCount = meters.filter((m) => activeBlockId === 'ALL' || m.blockId.toLowerCase() === activeBlockId.toLowerCase()).length;
+    const activeMetersCount = meters.filter((m) => 
+      currentFilter === 'ALL' || normalizeBlock(m.blockId) === normalizeBlock(currentFilter)
+    ).length;
+
     const todayCost = todayUnits * tariff.baseRatePerUnit;
 
     const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
@@ -251,7 +268,7 @@ let relevantReadings = readings;
       tariffRate: tariff.baseRatePerUnit,
       averageDailyLoad,
     };
-  }, [readings, activeBlockId, meters, calculateBill, tariff]);
+  }, [allReadings, isAdmin, assignedBlock, selectedBlockFilter, meters, calculateBill, tariff]);
 
   // Export readings as CSV
   const handleExportCSV = () => {
@@ -278,7 +295,7 @@ let relevantReadings = readings;
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `energy_monitoring_readings_${activeBlockId}_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `energy_monitoring_readings_${assignedBlock?.code || selectedBlockFilter}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -304,7 +321,7 @@ let relevantReadings = readings;
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* १. इनचार्जसाठी फोटोसारखी निळी सूचना पट्टी */}
+      {/* इनचार्जसाठी समर्पित माहिती पट्टी */}
       {!isAdmin && assignedBlock && (
         <div className="bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2.5 shadow-sm">
           <UserCheck className="w-4 h-4 text-cyan-400 shrink-0" />
@@ -337,7 +354,7 @@ let relevantReadings = readings;
               Date: {formatReadableDate(getTodayDateStr())}
             </span>
           </div>
-          {/* २. फोटोसारखे टायटल: इनचार्जला 'A Block Energy Monitoring' */}
+          
           <h1 className={`text-xl sm:text-2xl font-extrabold tracking-tight mt-1 ${
             isDarkMode ? 'text-white' : 'text-slate-900'
           }`}>
@@ -522,7 +539,7 @@ let relevantReadings = readings;
           }`}>
             <span>Rate: {tariff.currencySymbol}{kpis.tariffRate}/unit</span>
             <button
-              onClick={() => onNavigateToBilling(activeBlockId !== 'ALL' ? activeBlockId : undefined)}
+              onClick={() => onNavigateToBilling(!isAdmin && assignedBlock ? assignedBlock.id : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : undefined))}
               className={`hover:underline flex items-center gap-0.5 cursor-pointer font-medium ${
                 isDarkMode ? 'text-cyan-400' : 'text-cyan-700'
               }`}
@@ -566,8 +583,8 @@ let relevantReadings = readings;
         </div>
       </div>
 
-      {/* Block Summaries Bento Grid (फक्त ॲडमिनला सर्व दिसतील) */}
-      {activeBlockId === 'ALL' && isAdmin && (
+      {/* Block Summaries Bento Grid (फक्त ॲडमिनला दिसतील) */}
+      {isAdmin && selectedBlockFilter === 'ALL' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 ${
@@ -581,9 +598,9 @@ let relevantReadings = readings;
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {blocks.map((b) => {
-              const bReadings = readings.filter((r) => r.blockId === b.id);
+              const bReadings = allReadings.filter((r) => normalizeBlock(r.blockId) === normalizeBlock(b.id));
               const bUnits = bReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
-              const bMeters = meters.filter((m) => m.blockId === b.id);
+              const bMeters = meters.filter((m) => normalizeBlock(m.blockId) === normalizeBlock(b.id));
               const bCost = bUnits * tariff.baseRatePerUnit;
 
               return (
@@ -717,7 +734,7 @@ let relevantReadings = readings;
           <div className="flex items-center gap-2 shrink-0">
             <button
               id="btn-dashboard-open-daywise"
-              onClick={() => onNavigateToDayWise?.(activeBlockId !== 'ALL' ? activeBlockId : undefined)}
+              onClick={() => onNavigateToDayWise?.(!isAdmin && assignedBlock ? assignedBlock.id : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : undefined))}
               className={`flex items-center gap-2 px-4 py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer active:scale-95 shadow-md ${
                 isDarkMode 
                   ? 'text-slate-950 bg-cyan-400 hover:bg-cyan-300 shadow-cyan-500/30' 
@@ -750,14 +767,14 @@ let relevantReadings = readings;
               <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                 Showing {filteredReadings.length} reading records with automatic unit difference calculation
               </p>
-              {selectedBlockFilter !== 'ALL' && (
+              {(!isAdmin && assignedBlock ? assignedBlock.code : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : null)) && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-md border ${
                   isDarkMode 
                     ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' 
                     : 'bg-cyan-50 text-cyan-800 border-cyan-200'
                 }`}>
-                  <span>Block: {blocks.find((b) => b.id === selectedBlockFilter)?.code || selectedBlockFilter}</span>
-                  {isAdmin && (
+                  <span>Block: {!isAdmin && assignedBlock ? assignedBlock.code : (blocks.find((b) => b.id === selectedBlockFilter)?.code || selectedBlockFilter)}</span>
+                  {isAdmin && selectedBlockFilter !== 'ALL' && (
                     <button
                       onClick={() => setSelectedBlockFilter('ALL')}
                       className={`ml-0.5 cursor-pointer ${isDarkMode ? 'hover:text-white' : 'hover:text-slate-900'}`}
@@ -856,7 +873,7 @@ let relevantReadings = readings;
             </button>
 
             {/* Clear All Readings button (फक्त ॲडमिनसाठी सुरक्षित) */}
-            {isAdmin && readings.length > 0 && (
+            {isAdmin && allReadings.length > 0 && (
               <button
                 onClick={() => setShowClearConfirmModal(true)}
                 title="Delete all recorded readings"
@@ -874,7 +891,7 @@ let relevantReadings = readings;
             {/* Fast 4-Month Batch Button */}
             {canEnterReading() && (
               <button
-                onClick={() => onOpenEnterReading(activeBlockId !== 'ALL' ? activeBlockId : undefined, 'batch4m')}
+                onClick={() => onOpenEnterReading(!isAdmin && assignedBlock ? assignedBlock.id : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : undefined), 'batch4m')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all shadow-sm cursor-pointer ${
                   isDarkMode 
                     ? 'text-cyan-300 bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/40' 
@@ -889,7 +906,7 @@ let relevantReadings = readings;
             {/* Enter Single Reading CTA */}
             {canEnterReading() && (
               <button
-                onClick={() => onOpenEnterReading(activeBlockId !== 'ALL' ? activeBlockId : undefined, 'single')}
+                onClick={() => onOpenEnterReading(!isAdmin && assignedBlock ? assignedBlock.id : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : undefined), 'single')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all shadow-md cursor-pointer ${
                   isDarkMode 
                     ? 'text-slate-950 bg-cyan-400 hover:bg-cyan-300 shadow-cyan-500/20' 
@@ -904,7 +921,7 @@ let relevantReadings = readings;
         </div>
 
         {/* Empty State vs Table */}
-        {readings.length === 0 ? (
+        {allReadings.length === 0 ? (
           <div className="py-12 px-6 text-center space-y-4">
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto border ${
               isDarkMode ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-cyan-50 border-cyan-200 text-cyan-600'
@@ -919,7 +936,7 @@ let relevantReadings = readings;
             </div>
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
               <button
-                onClick={() => onOpenEnterReading(undefined, 'batch4m')}
+                onClick={() => onOpenEnterReading(!isAdmin && assignedBlock ? assignedBlock.id : undefined, 'batch4m')}
                 className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg cursor-pointer ${
                   isDarkMode 
                     ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/20' 
@@ -930,7 +947,7 @@ let relevantReadings = readings;
                 <span>⚡ Fill 4-Month Historical Data</span>
               </button>
               <button
-                onClick={() => onOpenEnterReading(undefined, 'single')}
+                onClick={() => onOpenEnterReading(!isAdmin && assignedBlock ? assignedBlock.id : undefined, 'single')}
                 className={`px-4 py-2.5 rounded-xl font-semibold text-xs border flex items-center gap-2 cursor-pointer ${
                   isDarkMode 
                     ? 'bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700' 
@@ -966,7 +983,7 @@ let relevantReadings = readings;
               </thead>
               <tbody className={`divide-y font-sans ${isDarkMode ? 'divide-slate-800/60' : 'divide-slate-200'}`}>
                 {filteredReadings.map((reading) => {
-                  const block = blocks.find((b) => b.id === reading.blockId);
+                  const block = blocks.find((b) => normalizeBlock(b.id) === normalizeBlock(reading.blockId));
                   const cost = reading.unitsConsumed * tariff.baseRatePerUnit;
                   const isSpecialExample = reading.notes && reading.notes.includes('09.08.26 reading 200');
 
@@ -1100,7 +1117,7 @@ let relevantReadings = readings;
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-              Are you sure you want to delete all <strong>{readings.length}</strong> recorded meter readings from the system?
+              Are you sure you want to delete all <strong>{allReadings.length}</strong> recorded meter readings from the system?
               This will wipe all data and reset meter baselines so you can manually enter your last 4 months of records.
             </p>
 

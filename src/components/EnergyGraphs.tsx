@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useEnergy } from '../context/EnergyContext';
 import { getTodayDateStr, getCurrentYear, formatMonthYear } from '../utils/dateUtils';
 import { 
@@ -51,24 +51,70 @@ export const EnergyGraphs: React.FC<EnergyGraphsProps> = ({ initialBlockId, week
   const gridStroke = isDarkMode ? '#1e293b' : '#e2e8f0';
   const axisStroke = isDarkMode ? '#64748b' : '#94a3b8';
 
-  // Selected Block & Granularity (Day / Week / Month / Year)
-  const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
-    if (isBlockIncharge && currentUser.assignedBlockId) {
-      return currentUser.assignedBlockId;
+  // ब्लॉक आयडी किंवा कोडचे अक्षर शोधणारे हेल्पर (उदा. 'block-b' -> 'b', 'blk-c' -> 'c')
+  const normalizeBlock = (val?: string) => {
+    if (!val) return '';
+    return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
+  };
+
+  // १. इनचार्ज युझरचा अचूक ब्लॉक शोधणे (A, B, C, D कडक आयसोलेशन)
+  const resolvedInchargeBlockId = useMemo(() => {
+    if (isAdmin) return null;
+    if (userAssignedBlock?.id) return userAssignedBlock.id;
+
+    const uBlockId = (currentUser?.assignedBlockId || '').trim().toLowerCase();
+    const uname = (currentUser?.username || '').trim().toLowerCase();
+
+    let targetLetter = '';
+    const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
+    if (match) {
+      targetLetter = match[1].toLowerCase();
+    } else if (uBlockId && uBlockId !== 'all') {
+      targetLetter = normalizeBlock(uBlockId);
     }
+
+    if (blocks && blocks.length > 0) {
+      const found = blocks.find((b) => {
+        const bId = (b.id || '').toLowerCase();
+        const bCode = (b.code || '').toLowerCase();
+        return (
+          bId === uBlockId ||
+          bCode === uBlockId ||
+          (targetLetter && (normalizeBlock(bId) === targetLetter || normalizeBlock(bCode) === targetLetter))
+        );
+      });
+      if (found) return found.id;
+    }
+
+    if (initialBlockId && initialBlockId !== 'ALL') return initialBlockId;
+    if (targetLetter) return `block-${targetLetter}`;
+
+    return null;
+  }, [isAdmin, userAssignedBlock, currentUser, blocks, initialBlockId]);
+
+  // २. इफेक्टिव्ह ब्लॉक आयडी: इनचार्जसाठी सक्तीने त्याचाच ब्लॉक, ॲडमिनसाठी ड्रॉपडाउन
+  const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
+    if (!isAdmin && resolvedInchargeBlockId) return resolvedInchargeBlockId;
     return initialBlockId || 'ALL';
   });
+
+  useEffect(() => {
+    if (!isAdmin && resolvedInchargeBlockId) {
+      setSelectedBlockId(resolvedInchargeBlockId);
+    } else if (initialBlockId) {
+      setSelectedBlockId(initialBlockId);
+    }
+  }, [isAdmin, resolvedInchargeBlockId, initialBlockId]);
+
+  const effectiveBlockId = (!isAdmin && resolvedInchargeBlockId) ? resolvedInchargeBlockId : selectedBlockId;
 
   const [timeframe, setTimeframe] = useState<'day' | 'week' | 'month' | 'year'>('week');
   const [chartType, setChartType] = useState<'bar' | 'area' | 'line'>(weeklyLineOnly ? 'line' : 'bar');
 
-  const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
-    ? currentUser.assignedBlockId
-    : selectedBlockId;
-
   const activeBlock = useMemo(() => {
     if (effectiveBlockId === 'ALL') return null;
-    return blocks.find((b) => b.id === effectiveBlockId) || null;
+    const targetNorm = normalizeBlock(effectiveBlockId);
+    return blocks.find((b) => b.id === effectiveBlockId || normalizeBlock(b.id) === targetNorm || normalizeBlock(b.code) === targetNorm) || null;
   }, [effectiveBlockId, blocks]);
 
   // Compute graph dataset based on chosen granularity
@@ -88,7 +134,7 @@ export const EnergyGraphs: React.FC<EnergyGraphsProps> = ({ initialBlockId, week
 
   // Summary statistics for the chart
   const summaryStats = useMemo(() => {
-    if (!graphData || graphData.length === 0) return { totalUnits: 0, peakUnits: 0, peakLabel: '-', avgUnits: 0 };
+    if (!graphData || graphData.length === 0) return { totalUnits: 0, peakUnits: 0, peakLabel: '-', avgUnits: 0, totalCost: 0 };
     
     let total = 0;
     let max = -1;
@@ -107,7 +153,7 @@ export const EnergyGraphs: React.FC<EnergyGraphsProps> = ({ initialBlockId, week
 
     return {
       totalUnits: total,
-      peakUnits: max,
+      peakUnits: Math.max(0, max),
       peakLabel: maxLabel,
       avgUnits: avg,
       totalCost: total * tariff.baseRatePerUnit,
@@ -158,7 +204,7 @@ export const EnergyGraphs: React.FC<EnergyGraphsProps> = ({ initialBlockId, week
 
   const getPrimaryColor = () => {
     if (activeBlock) return activeBlock.color;
-    return '#06b6d4'; // cyan
+    return '#06b6d4';
   };
 
   return (
@@ -182,15 +228,15 @@ export const EnergyGraphs: React.FC<EnergyGraphsProps> = ({ initialBlockId, week
 
         {/* Filters Controls Group */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Block Selection (if allowed) */}
-          {(!isBlockIncharge || !userAssignedBlock) && (
+          {/* Block Selection (फक्त ॲडमिनसाठी खुला, इनचार्जसाठी ब्लॉक लॉक) */}
+          {isAdmin && (
             <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
               <span className="text-xs font-semibold text-slate-400 px-2">Block:</span>
               <select
                 id="select-graph-block"
                 value={selectedBlockId}
                 onChange={(e) => setSelectedBlockId(e.target.value)}
-                className="bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500"
+                className="bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 <option value="ALL">All Blocks (Combined)</option>
                 {blocks.map((b) => (
@@ -202,81 +248,85 @@ export const EnergyGraphs: React.FC<EnergyGraphsProps> = ({ initialBlockId, week
             </div>
           )}
 
-          {/* Granularity Tabs (Day / Week / Month / Year) - EXACT REQUIREMENT */}
-          {!weeklyLineOnly && <div className="flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800">
-            <button
-              id="tab-graph-day"
-              onClick={() => setTimeframe('day')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                timeframe === 'day'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Day Wise
-            </button>
-            <button
-              id="tab-graph-week"
-              onClick={() => setTimeframe('week')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                timeframe === 'week'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Week Wise
-            </button>
-            <button
-              id="tab-graph-month"
-              onClick={() => setTimeframe('month')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                timeframe === 'month'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Month Wise
-            </button>
-            <button
-              id="tab-graph-year"
-              onClick={() => setTimeframe('year')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                timeframe === 'year'
-                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Year Wise
-            </button>
-          </div>}
+          {/* Granularity Tabs (Day / Week / Month / Year) */}
+          {!weeklyLineOnly && (
+            <div className="flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800">
+              <button
+                id="tab-graph-day"
+                onClick={() => setTimeframe('day')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  timeframe === 'day'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Day Wise
+              </button>
+              <button
+                id="tab-graph-week"
+                onClick={() => setTimeframe('week')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  timeframe === 'week'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Week Wise
+              </button>
+              <button
+                id="tab-graph-month"
+                onClick={() => setTimeframe('month')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  timeframe === 'month'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Month Wise
+              </button>
+              <button
+                id="tab-graph-year"
+                onClick={() => setTimeframe('year')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  timeframe === 'year'
+                    ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Year Wise
+              </button>
+            </div>
+          )}
 
           {/* Chart Style Switcher (Bar / Area / Line) */}
-          {!weeklyLineOnly && <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setChartType('bar')}
-              className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
-                chartType === 'bar' ? 'bg-slate-800 text-cyan-400 font-bold' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              Bar
-            </button>
-            <button
-              onClick={() => setChartType('area')}
-              className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
-                chartType === 'area' ? 'bg-slate-800 text-cyan-400 font-bold' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              Area
-            </button>
-            <button
-              onClick={() => setChartType('line')}
-              className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
-                chartType === 'line' ? 'bg-slate-800 text-cyan-400 font-bold' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              Line
-            </button>
-          </div>}
+          {!weeklyLineOnly && (
+            <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+              <button
+                onClick={() => setChartType('bar')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
+                  chartType === 'bar' ? 'bg-slate-800 text-cyan-400 font-bold' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Bar
+              </button>
+              <button
+                onClick={() => setChartType('area')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
+                  chartType === 'area' ? 'bg-slate-800 text-cyan-400 font-bold' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Area
+              </button>
+              <button
+                onClick={() => setChartType('line')}
+                className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer ${
+                  chartType === 'line' ? 'bg-slate-800 text-cyan-400 font-bold' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Line
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
