@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useEnergy } from '../context/EnergyContext';
 import { getTodayDateStr, getYesterdayDateStr, getCurrentMonthStr, formatReadableDate } from '../utils/dateUtils';
 import { 
@@ -21,7 +21,8 @@ import {
   Sparkles,
   FileSpreadsheet,
   Check,
-  CalendarRange
+  CalendarRange,
+  UserCheck
 } from 'lucide-react';
 import { Block, MeterReading } from '../types';
 import { EnergyGraphs } from './EnergyGraphs';
@@ -55,18 +56,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
     isDarkMode,
   } = useEnergy();
 
-  // Active block filter: in-charge is locked to their block, admin/viewer can switch
+  // इनचार्जचा असाइन केलेला ब्लॉक सुरक्षित शोधणे
+  const assignedBlock = useMemo(() => {
+    if (isAdmin) return null;
+    if (userAssignedBlock) return userAssignedBlock;
+    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      const found = blocks.find((b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase());
+      if (found) return found;
+    }
+    const byInchargeId = blocks.find((b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase());
+    return byInchargeId || null;
+  }, [isAdmin, userAssignedBlock, currentUser, blocks]);
+
+  // Active block filter
   const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>(() => {
-    if (isBlockIncharge && currentUser.assignedBlockId) {
-      return currentUser.assignedBlockId;
+    if (!isAdmin && assignedBlock) {
+      return assignedBlock.id;
     }
     return 'ALL';
   });
 
+  useEffect(() => {
+    if (!isAdmin && assignedBlock && selectedBlockFilter !== assignedBlock.id) {
+      setSelectedBlockFilter(assignedBlock.id);
+    }
+  }, [isAdmin, assignedBlock, selectedBlockFilter]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('ALL');
   
-  // In-app modal for clearing all readings safely (replaces blocked window.confirm)
+  // In-app modal for clearing all readings safely
   const [showClearConfirmModal, setShowClearConfirmModal] = useState<boolean>(false);
   const [toastFeedbackMsg, setToastFeedbackMsg] = useState<string>('');
 
@@ -75,10 +94,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const set = new Set<string>();
     readings.forEach((r) => {
       if (r.readingDate && r.readingDate.length >= 7) {
-        set.add(r.readingDate.substring(0, 7)); // e.g. '2026-08'
+        set.add(r.readingDate.substring(0, 7));
       }
     });
-    // Ensure default months if none
     if (set.size === 0) {
       ['2026-05', '2026-06', '2026-07', '2026-08'].forEach((m) => set.add(m));
     }
@@ -86,12 +104,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [readings]);
 
   // Filtered readings list
-  const activeBlockId = isBlockIncharge && currentUser.assignedBlockId ? currentUser.assignedBlockId : selectedBlockFilter;
+  const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
 
   const filteredReadings = useMemo(() => {
     return readings.filter((r) => {
       // Block filter
-      if (activeBlockId !== 'ALL' && r.blockId !== activeBlockId) return false;
+      if (activeBlockId !== 'ALL' && r.blockId.toLowerCase() !== activeBlockId.toLowerCase()) return false;
       
       // Date / Month filter
       if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
@@ -124,7 +142,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     let relevantReadings = readings;
     if (activeBlockId !== 'ALL') {
-      relevantReadings = relevantReadings.filter((r) => r.blockId === activeBlockId);
+      relevantReadings = relevantReadings.filter((r) => r.blockId.toLowerCase() === activeBlockId.toLowerCase());
     }
 
     const todayUnits = relevantReadings
@@ -139,22 +157,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
       .filter((r) => r.readingDate.startsWith(targetMonth))
       .reduce((sum, r) => sum + r.unitsConsumed, 0);
 
-    // Current total of all blocks combined for the current month
     const allBlocksMonthUnits = readings
       .filter((r) => r.readingDate.startsWith(targetMonth))
       .reduce((sum, r) => sum + r.unitsConsumed, 0);
 
-    // Calculate month bill for the current selection
     const billData = calculateBill({
       blockId: activeBlockId,
       periodType: 'month',
       referenceDate: todayDate,
     });
 
-    const activeMetersCount = meters.filter((m) => activeBlockId === 'ALL' || m.blockId === activeBlockId).length;
+    const activeMetersCount = meters.filter((m) => activeBlockId === 'ALL' || m.blockId.toLowerCase() === activeBlockId.toLowerCase()).length;
     const todayCost = todayUnits * tariff.baseRatePerUnit;
 
-    // Daily Average Load calculation
     const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
     const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
     const averageDailyLoad = distinctDates > 0 ? (totalUnitsForAvg / distinctDates) : 0;
@@ -214,7 +229,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setToastFeedbackMsg('Reading record deleted.');
   };
 
-  // Helper for human month names
   const formatMonthName = (yearMonth: string) => {
     const [y, m] = yearMonth.split('-');
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -224,9 +238,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {isBlockIncharge && userAssignedBlock && (
-        <EnergyGraphs initialBlockId={userAssignedBlock.id} weeklyLineOnly />
+      {/* १. इनचार्जसाठी फोटोसारखी निळी सूचना पट्टी */}
+      {!isAdmin && assignedBlock && (
+        <div className="bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2.5 shadow-sm">
+          <UserCheck className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span>
+            You are logged in as <strong>{assignedBlock.name} In-Charge</strong>. You have dedicated access to {assignedBlock.name} meter readings and billing.
+          </span>
+        </div>
       )}
+
+      {/* Weekly Graph if incharge */}
+      {!isAdmin && assignedBlock && (
+        <EnergyGraphs initialBlockId={assignedBlock.id} weeklyLineOnly />
+      )}
+
       {/* Top Banner & Block Filter Bar */}
       <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl border transition-all ${
         isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
@@ -245,11 +271,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Date: {formatReadableDate(getTodayDateStr())}
             </span>
           </div>
+          {/* २. फोटोसारखे टायटल: इनचार्जला 'A Block Energy Monitoring' */}
           <h1 className={`text-xl sm:text-2xl font-extrabold tracking-tight mt-1 ${
             isDarkMode ? 'text-white' : 'text-slate-900'
           }`}>
-            {isBlockIncharge && userAssignedBlock
-              ? `${userAssignedBlock.name} Energy Monitoring`
+            {!isAdmin && assignedBlock
+              ? `${assignedBlock.name} Energy Monitoring`
               : selectedBlockFilter === 'ALL'
               ? 'Facility-Wide Energy Monitoring'
               : `${blocks.find((b) => b.id === selectedBlockFilter)?.name || 'Block'} Energy Dashboard`}
@@ -259,8 +286,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         </div>
 
-        {/* Block Filter Buttons (for Admin / Auditor) */}
-        {(!isBlockIncharge || !userAssignedBlock) && (
+        {/* Block Filter Buttons: फक्त ॲडमिनला दिसतील */}
+        {isAdmin && (
           <div className={`flex items-center gap-1.5 overflow-x-auto p-1 rounded-xl border ${
             isDarkMode ? 'bg-slate-950/80 border-slate-800/80' : 'bg-slate-100 border-slate-200'
           }`}>
@@ -305,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         )}
       </div>
 
-      {/* Toast Feedback Notification Banner */}
+      {/* Toast Feedback Notification */}
       {toastFeedbackMsg && (
         <div className={`p-3.5 rounded-xl border text-xs flex items-center justify-between animate-fadeIn ${
           isDarkMode 
@@ -327,7 +354,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Today's Units of the Block */}
+        {/* Card 1: Today's Units */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/80 border-slate-800 hover:border-slate-700' 
@@ -361,7 +388,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Current Total of All Block */}
+        {/* Card 2: Current Total */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/80 border-slate-800 hover:border-slate-700' 
@@ -401,7 +428,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Card 3: Estimated Month Bill of the Block */}
+        {/* Card 3: Estimated Month Bill */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/80 border-slate-800 hover:border-slate-700' 
@@ -440,7 +467,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Card 4: Daily Average Load (Replaced Active Infrastructure) */}
+        {/* Card 4: Daily Average Load */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/80 border-slate-800 hover:border-slate-700' 
@@ -473,8 +500,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </div>
 
-      {/* Block Summaries Bento Grid */}
-      {activeBlockId === 'ALL' && (
+      {/* Block Summaries Bento Grid (फक्त ॲडमिनला सर्व दिसतील) */}
+      {activeBlockId === 'ALL' && isAdmin && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 ${
@@ -664,7 +691,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     : 'bg-cyan-50 text-cyan-800 border-cyan-200'
                 }`}>
                   <span>Block: {blocks.find((b) => b.id === selectedBlockFilter)?.code || selectedBlockFilter}</span>
-                  {(!isBlockIncharge || !userAssignedBlock) && (
+                  {isAdmin && (
                     <button
                       onClick={() => setSelectedBlockFilter('ALL')}
                       className={`ml-0.5 cursor-pointer ${isDarkMode ? 'hover:text-white' : 'hover:text-slate-900'}`}
@@ -679,36 +706,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Block Selection Filter inside this section */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-xs ${
-              isDarkMode 
-                ? 'bg-slate-900 border-cyan-500/40 text-slate-200' 
-                : 'bg-white border-cyan-300 text-slate-800'
-            }`}>
-              <Building className={`w-3.5 h-3.5 ${isDarkMode ? 'text-cyan-400' : 'text-cyan-600'}`} />
-              <label htmlFor="select-table-block-filter" className={`text-[11px] font-bold uppercase hidden sm:inline ${
-                isDarkMode ? 'text-cyan-400' : 'text-cyan-700'
+            {/* Block Selection Filter inside this section (फक्त ॲडमिनसाठी) */}
+            {isAdmin && (
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border shadow-xs ${
+                isDarkMode 
+                  ? 'bg-slate-900 border-cyan-500/40 text-slate-200' 
+                  : 'bg-white border-cyan-300 text-slate-800'
               }`}>
-                Block:
-              </label>
-              <select
-                id="select-table-block-filter"
-                value={selectedBlockFilter}
-                onChange={(e) => setSelectedBlockFilter(e.target.value)}
-                disabled={isBlockIncharge && !!currentUser.assignedBlockId}
-                className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1 ${
-                  isDarkMode ? 'text-white' : 'text-slate-800'
-                }`}
-                title="Filter readings by campus block"
-              >
-                <option value="ALL" className={isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>All Campus Blocks</option>
-                {blocks.map((b) => (
-                  <option key={b.id} value={b.id} className={isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
-                    {b.code} - {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                <Building className={`w-3.5 h-3.5 ${isDarkMode ? 'text-cyan-400' : 'text-cyan-600'}`} />
+                <label htmlFor="select-table-block-filter" className={`text-[11px] font-bold uppercase hidden sm:inline ${
+                  isDarkMode ? 'text-cyan-400' : 'text-cyan-700'
+                }`}>
+                  Block:
+                </label>
+                <select
+                  id="select-table-block-filter"
+                  value={selectedBlockFilter}
+                  onChange={(e) => setSelectedBlockFilter(e.target.value)}
+                  className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer pr-1 ${
+                    isDarkMode ? 'text-white' : 'text-slate-800'
+                  }`}
+                  title="Filter readings by campus block"
+                >
+                  <option value="ALL" className={isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>All Campus Blocks</option>
+                  {blocks.map((b) => (
+                    <option key={b.id} value={b.id} className={isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-900'}>
+                      {b.code} - {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Search Input */}
             <div className="relative">
@@ -739,7 +767,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               }`}
             >
               <option value="ALL">All Recorded Dates</option>
-              <option value="TODAY">Today (30 Aug 2026)</option>
+              <option value="TODAY">Today ({formatReadableDate(getTodayDateStr())})</option>
               {availableMonths.map((ym) => (
                 <option key={ym} value={`MONTH_${ym}`}>
                   Month: {formatMonthName(ym)}
@@ -761,8 +789,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span>Export CSV</span>
             </button>
 
-            {/* Clear All Readings button if records exist */}
-            {readings.length > 0 && (
+            {/* Clear All Readings button (फक्त ॲडमिनसाठी सुरक्षित) */}
+            {isAdmin && readings.length > 0 && (
               <button
                 onClick={() => setShowClearConfirmModal(true)}
                 title="Delete all recorded readings"
@@ -918,7 +946,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         {reading.currentReading.toLocaleString()} kWh
                       </td>
 
-                      {/* Multiplying Factor (MF) */}
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         <span 
                           className={`px-2 py-0.5 rounded font-mono font-bold text-xs border ${
@@ -932,7 +959,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </span>
                       </td>
 
-                      {/* Automatic Difference & Units Highlight */}
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <span 
                           className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border font-mono font-extrabold text-xs ${
@@ -993,7 +1019,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         )}
       </div>
 
-      {/* Clear All In-App Safe Confirmation Modal */}
+      {/* Clear All In-App Modal */}
       {showClearConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden p-6 space-y-4">

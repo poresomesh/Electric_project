@@ -87,7 +87,7 @@ export const UserManagement: React.FC = () => {
   const [newUserBlockId, setNewUserBlockId] = useState('ALL');
   const [newUserDesignation, setNewUserDesignation] = useState('');
 
-  // Block Credentials Assignment State (Admin authority to assign ID & Password per block)
+  // Block Credentials Assignment State
   const [assigningBlockModal, setAssigningBlockModal] = useState<Block | null>(null);
   const [assignBlockUserId, setAssignBlockUserId] = useState('');
   const [assignBlockUsername, setAssignBlockUsername] = useState('');
@@ -140,7 +140,7 @@ export const UserManagement: React.FC = () => {
   const [editMeterMultiplier, setEditMeterMultiplier] = useState(1);
   const [editMeterLocation, setEditMeterLocation] = useState('');
 
-  // In-app safe confirmation modal state (replaces window.confirm which is blocked in iframes)
+  // Confirmation Modal State
   const [confirmModal, setConfirmModal] = useState<{
     type: 'clear_readings' | 'reset_system' | 'delete_block' | 'delete_meter' | 'delete_user';
     id?: string;
@@ -171,7 +171,6 @@ export const UserManagement: React.FC = () => {
     setConfirmModal(null);
   };
 
-  // Open Edit User
   const handleOpenEditUser = (user: User) => {
     if (!isAdmin) return;
     setEditingUser(user);
@@ -186,13 +185,15 @@ export const UserManagement: React.FC = () => {
     setEditUserPhone(user.phone || '');
   };
 
-  const handleSaveUserEdit = (e: React.FormEvent) => {
+  const handleSaveUserEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin || !editingUser) return;
     const finalUserId = editUserId.trim() || editingUser.id;
-    updateUser(editingUser.id, {
+    const finalName = editUserName.trim();
+
+    await updateUser(editingUser.id, {
       newId: finalUserId,
-      name: editUserName.trim(),
+      name: finalName,
       username: editUserUsername.trim().toLowerCase(),
       password: editUserPassword.trim(),
       role: editUserRole,
@@ -201,15 +202,14 @@ export const UserManagement: React.FC = () => {
       phone: editUserPhone.trim(),
     });
 
-    // If assigned to a block and is in-charge, sync block's inchargeName & inchargeId
     if (editUserRole === 'block_incharge' && editUserBlockId !== 'ALL') {
       updateBlock(editUserBlockId, {
-        inchargeName: editUserName.trim(),
+        inchargeName: finalName,
         inchargeId: finalUserId,
       });
     }
 
-    setActionFeedbackMsg(`User account "${editUserName}" updated successfully.`);
+    setActionFeedbackMsg(`User account "${finalName}" updated successfully.`);
     setEditingUser(null);
   };
 
@@ -232,7 +232,6 @@ export const UserManagement: React.FC = () => {
       designation: newUserDesignation.trim() || `${newUserName} (${newUserRole})`,
     });
 
-    // If assigned to a block as incharge, update the block's inchargeName
     if (newUserRole === 'block_incharge' && newUserBlockId !== 'ALL') {
       updateBlock(newUserBlockId, {
         inchargeName: newUserName.trim(),
@@ -249,16 +248,14 @@ export const UserManagement: React.FC = () => {
     setShowAddUser(false);
   };
 
-  // Open Block Credentials Assignment Modal (Admin authority to assign ID & Password to each block)
   const handleOpenAssignBlockCredentials = (block: Block) => {
     if (!isAdmin) return;
     setAssigningBlockModal(block);
 
-    // Find existing assigned incharge user for this block
     const existingIncharge = users.find(
       (u) =>
-        (block.inchargeId && u.id === block.inchargeId) ||
-        (u.assignedBlockId === block.id && u.role === 'block_incharge')
+        (block.inchargeId && u.id.toLowerCase() === block.inchargeId.toLowerCase()) ||
+        (u.assignedBlockId?.toLowerCase() === block.id.toLowerCase() && u.role === 'block_incharge')
     );
 
     const defaultUserId = existingIncharge?.id || `usr-incharge-${block.id.replace('block-', '')}`;
@@ -292,6 +289,10 @@ export const UserManagement: React.FC = () => {
     });
 
     if (res.success) {
+      updateBlock(assigningBlockModal.id, {
+        inchargeName: assignBlockName.trim(),
+        inchargeId: assignBlockUserId.trim(),
+      });
       setActionFeedbackMsg(res.message);
       setAssigningBlockModal(null);
     } else {
@@ -324,7 +325,6 @@ export const UserManagement: React.FC = () => {
     e.preventDefault();
     if (!isAdmin || !blockName || !blockCode) return;
     
-    // Incharge resolution
     let finalInchargeName = blockInchargeName.trim() || 'Unassigned';
     let finalInchargeId = blockInchargeId;
     if (blockInchargeId) {
@@ -384,7 +384,6 @@ export const UserManagement: React.FC = () => {
       targetMonthlyKwh: editBlockTarget,
     });
 
-    // If an incharge was chosen from existing users, update that user's assignedBlockId
     if (editBlockInchargeId) {
       updateUser(editBlockInchargeId, {
         assignedBlockId: editingBlock.id,
@@ -519,7 +518,7 @@ export const UserManagement: React.FC = () => {
             </div>
           )}
 
-          {/* SECTION: Admin Authority to Assign ID, Username & Password to Each and Every Block */}
+          {/* SECTION: Admin Authority to Assign ID, Username & Password to Each Block */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
               <div>
@@ -532,7 +531,7 @@ export const UserManagement: React.FC = () => {
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  As Chief Administrator (<strong>Tejas</strong>), you have full authority to assign or update the User ID, Username, and Password for each and every block. When in-charges sign in with these credentials, they will strictly see only their block's electrical meters and data.
+                  As Chief Administrator (<strong>Tejas</strong>), you have full authority to assign or update the User ID, Username, and Password for each block. When in-charges sign in, they will strictly see only their block's electrical data.
                 </p>
               </div>
               <div className="text-right shrink-0">
@@ -546,13 +545,16 @@ export const UserManagement: React.FC = () => {
             {/* Block Credentials Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 pt-1">
               {blocks.map((block) => {
+                // १. अचूक इनचार्ज युझर शोधणे
                 const assignedUser = users.find(
                   (u) =>
-                    (block.inchargeId && u.id === block.inchargeId) ||
-                    (u.assignedBlockId === block.id && u.role === 'block_incharge')
+                    (block.inchargeId && u.id.toLowerCase() === block.inchargeId.toLowerCase()) ||
+                    (u.assignedBlockId?.toLowerCase() === block.id.toLowerCase() && u.role === 'block_incharge') ||
+                    (block.inchargeName && u.name.toLowerCase() === block.inchargeName.toLowerCase())
                 );
                 const isRevealed = assignedUser ? revealedPasswordIds[assignedUser.id] : false;
                 const passwordConfigured = Boolean(assignedUser?.passwordConfigured || assignedUser?.password);
+                const displayInchargeName = assignedUser?.name || block.inchargeName || 'Unassigned';
 
                 return (
                   <div
@@ -580,8 +582,8 @@ export const UserManagement: React.FC = () => {
                       <div className="space-y-2 text-xs bg-slate-900/80 p-3 rounded-lg border border-slate-800/80">
                         <div className="flex items-center justify-between">
                           <span className="text-slate-400">Assigned In-Charge:</span>
-                          <span className="font-semibold text-white truncate max-w-[120px]" title={assignedUser?.name || block.inchargeName}>
-                            {assignedUser?.name || block.inchargeName}
+                          <span className="font-semibold text-white truncate max-w-[120px]" title={displayInchargeName}>
+                            {displayInchargeName}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -635,6 +637,7 @@ export const UserManagement: React.FC = () => {
             </div>
           </div>
 
+          {/* Directory Table */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
             <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
               <div>
@@ -679,7 +682,7 @@ export const UserManagement: React.FC = () => {
                     <label className="block text-slate-400 mb-1">Full Name</label>
                     <input
                       type="text"
-                      placeholder="e.g. Rajesh Kumar"
+                      placeholder="e.g. Sagar Mahindrakar"
                       value={newUserName}
                       onChange={(e) => setNewUserName(e.target.value)}
                       required
@@ -690,7 +693,7 @@ export const UserManagement: React.FC = () => {
                     <label className="block text-slate-400 mb-1">Login Username</label>
                     <input
                       type="text"
-                      placeholder="e.g. incharge_e"
+                      placeholder="e.g. incharge_a"
                       value={newUsername}
                       onChange={(e) => setNewUsername(e.target.value)}
                       required
@@ -723,7 +726,7 @@ export const UserManagement: React.FC = () => {
                     <label className="block text-slate-400 mb-1">Custom User ID (Optional)</label>
                     <input
                       type="text"
-                      placeholder="e.g. usr-incharge-e (auto-generated if blank)"
+                      placeholder="e.g. usr-incharge-a"
                       value={newUserId}
                       onChange={(e) => setNewUserId(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white font-mono focus:outline-none focus:border-cyan-500"
@@ -793,7 +796,7 @@ export const UserManagement: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {users.map((u) => {
-                    const block = blocks.find((b) => b.id === u.assignedBlockId);
+                    const block = blocks.find((b) => b.id.toLowerCase() === u.assignedBlockId?.toLowerCase());
                     const isRevealed = revealedPasswordIds[u.id];
                     const passwordConfigured = Boolean(u.passwordConfigured || u.password);
 
@@ -901,7 +904,7 @@ export const UserManagement: React.FC = () => {
             </div>
           </div>
 
-          {/* Edit User Modal Dialog (Admin authority to update ID, Username, Password, Profile) */}
+          {/* Edit User Modal Dialog */}
           {isAdmin && editingUser && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
               <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -1043,7 +1046,7 @@ export const UserManagement: React.FC = () => {
             </div>
           )}
 
-          {/* Block Credentials Assignment Modal Dialog (Admin authority to assign ID & Password per block) */}
+          {/* Block Credentials Assignment Modal Dialog */}
           {isAdmin && assigningBlockModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
               <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
@@ -1147,7 +1150,7 @@ export const UserManagement: React.FC = () => {
                         type="text"
                         value={assignBlockName}
                         onChange={(e) => setAssignBlockName(e.target.value)}
-                        placeholder="e.g. Sunil Verma"
+                        placeholder="e.g. Sagar Mahindrakar"
                         required
                         className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white focus:outline-none focus:border-cyan-500"
                       />
@@ -1207,7 +1210,6 @@ export const UserManagement: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              {/* Admin Card */}
               <div className="p-4 rounded-xl bg-slate-950 border border-amber-500/30 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="font-bold text-amber-300 flex items-center gap-1.5 text-xs">
@@ -1225,7 +1227,6 @@ export const UserManagement: React.FC = () => {
                 </ul>
               </div>
 
-              {/* In-Charge Card */}
               <div className="p-4 rounded-xl bg-slate-950 border border-cyan-500/30 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="font-bold text-cyan-300 flex items-center gap-1.5 text-xs">
@@ -1243,7 +1244,6 @@ export const UserManagement: React.FC = () => {
                 </ul>
               </div>
 
-              {/* Viewer Card */}
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-700 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="font-bold text-slate-200 flex items-center gap-1.5 text-xs">
@@ -1917,7 +1917,7 @@ export const UserManagement: React.FC = () => {
             </div>
           )}
 
-          {/* Appearance & Visual Theme Switcher Card */}
+          {/* Appearance Switcher */}
           <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -1936,7 +1936,7 @@ export const UserManagement: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setTheme('dark');
-                  setActionFeedbackMsg('Shifted to Dark Mode (Deep Industrial Slate theme).');
+                  setActionFeedbackMsg('Shifted to Dark Mode.');
                 }}
                 className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
                   theme === 'dark'
@@ -1957,7 +1957,7 @@ export const UserManagement: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setTheme('light');
-                  setActionFeedbackMsg('Shifted to Light Mode (Crisp Daytime theme).');
+                  setActionFeedbackMsg('Shifted to Light Mode.');
                 }}
                 className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
                   theme === 'light'
@@ -1978,7 +1978,7 @@ export const UserManagement: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setTheme('system');
-                  setActionFeedbackMsg('Shifted to System Auto Mode (Synchronizes with OS theme).');
+                  setActionFeedbackMsg('Shifted to System Auto Mode.');
                 }}
                 className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
                   theme === 'system'

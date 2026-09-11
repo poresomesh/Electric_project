@@ -656,21 +656,33 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
 // 1. फक्त लॉगिन असलेल्या ब्लॉक इनचार्जला त्याच्याच ब्लॉकचा डेटा दाखवा
-  const visibleBlocks = useMemo(() => {
-    if (isAdmin) return blocks;
+const visibleBlocks = useMemo(() => {
+    if (isAdmin || isViewer) return blocks;
+
+    // १. युझरच्या assignedBlockId वरून शोधणे (केस इन्सेन्सिटिव्ह)
     if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      return blocks.filter((b) => b.id === currentUser.assignedBlockId);
+      const match = blocks.filter(
+        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase()
+      );
+      if (match.length > 0) return match;
     }
-    return isViewer ? blocks : [];
-  }, [blocks, isAdmin, isViewer, currentUser.assignedBlockId]);
+
+    // २. युझरच्या स्वतःच्या आयडीवरून ब्लॉक शोधणे
+    const byInchargeId = blocks.filter(
+      (b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase()
+    );
+    if (byInchargeId.length > 0) return byInchargeId;
+
+    // ३. काहीही मॅच झाले नाही तरी रिकामा न ठेवता पहिला उपलब्ध ब्लॉक देणे
+    return blocks.length > 0 ? [blocks[0]] : [];
+  }, [blocks, isAdmin, isViewer, currentUser]);
 
   const visibleMeters = useMemo(() => {
-    if (isAdmin) return meters;
-    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      return meters.filter((m) => m.blockId === currentUser.assignedBlockId);
-    }
-    return isViewer ? meters : [];
-  }, [meters, isAdmin, isViewer, currentUser.assignedBlockId]);
+    if (isAdmin || isViewer) return meters;
+
+    const allowedBlockIds = new Set(visibleBlocks.map((b) => b.id.toLowerCase()));
+    return meters.filter((m) => allowedBlockIds.has(m.blockId.toLowerCase()));
+  }, [meters, visibleBlocks, isAdmin, isViewer]);
 
   const visibleReadings = useMemo(() => {
     let list = readings;
@@ -1340,7 +1352,7 @@ const updateUser = async (id: string, updates: Partial<User> & { newId?: string 
     saveSharedState({ tariff: newTariff });
   };
 
-  const calculateBill = ({
+const calculateBill = ({
     blockId,
     periodType,
     referenceDate = getTodayDateStr(),
@@ -1349,14 +1361,22 @@ const updateUser = async (id: string, updates: Partial<User> & { newId?: string 
     periodType: 'day' | 'week' | 'month' | 'year';
     referenceDate?: string;
   }): BillCalculation => {
-    const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
-      ? currentUser.assignedBlockId
-      : blockId;
+    // इनचार्ज असेल तर 'ALL' ऐवजी सक्तीने त्याचाच ब्लॉक घ्या
+    let effectiveBlockId = blockId;
+    if (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      effectiveBlockId = currentUser.assignedBlockId;
+    } else if (!effectiveBlockId) {
+      effectiveBlockId = 'ALL';
+    }
 
-    let filteredReadings = visibleReadings;
+    let filteredReadings = readings;
 
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      filteredReadings = filteredReadings.filter((r) => r.blockId === effectiveBlockId);
+      filteredReadings = readings.filter(
+        (r) => r.blockId.toLowerCase() === effectiveBlockId?.toLowerCase()
+      );
+    } else if (!isAdmin) {
+      filteredReadings = visibleReadings;
     }
 
     const refDate = new Date(referenceDate);

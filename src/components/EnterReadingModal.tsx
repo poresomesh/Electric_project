@@ -74,7 +74,17 @@ export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
     return [];
   }, [isAdmin, isBlockIncharge, currentUser, blocks]);
 
-  const [selectedBlockId, setSelectedBlockId] = useState<string>('');
+ // इनचार्ज लॉगिन असल्यास त्याचा पहिला उपलब्ध ब्लॉक आपोआप निवडणे
+  const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
+    return visibleBlocks[0]?.id || '';
+  });
+
+  // जर visibleBlocks लोड व्हायला काही सेकंद उशीर झाला, तर ब्लॉक सिलेक्ट करणे
+  useEffect(() => {
+    if (!selectedBlockId && visibleBlocks.length > 0) {
+      setSelectedBlockId(visibleBlocks[0].id);
+    }
+  }, [visibleBlocks, selectedBlockId]);
   const [selectedMeterId, setSelectedMeterId] = useState<string>('');
   const [readingDate, setReadingDate] = useState<string>(getTodayDateStr());
   const [readingTime, setReadingTime] = useState<string>('08:00');

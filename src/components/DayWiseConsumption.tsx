@@ -28,7 +28,8 @@ import {
   FileSpreadsheet,
   BarChart3,
   ExternalLink,
-  X
+  X,
+  UserCheck
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -68,11 +69,49 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     readings,
     tariff,
     currentUser,
+    isAdmin,
+    isBlockIncharge,
+    userAssignedBlock,
     canEnterReading,
     isDarkMode
   } = useEnergy();
 
-  // Date Range Presets & Filter (Removed single campus block filter as requested)
+  // इनचार्जचा ब्लॉक सुरक्षित शोधणे
+  const assignedBlock = useMemo(() => {
+    if (isAdmin) return null;
+    if (userAssignedBlock) return userAssignedBlock;
+    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      const found = blocks.find((b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase());
+      if (found) return found;
+    }
+    const byInchargeId = blocks.find((b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase());
+    return byInchargeId || null;
+  }, [isAdmin, userAssignedBlock, currentUser, blocks]);
+
+  // इनचार्जसाठी फक्त त्याचाच ब्लॉक, ॲडमिनसाठी सर्व ब्लॉक्स
+  const effectiveBlocks = useMemo(() => {
+    if (!isAdmin && assignedBlock) {
+      return [assignedBlock];
+    }
+    return blocks;
+  }, [isAdmin, assignedBlock, blocks]);
+
+  // इनचार्जसाठी फक्त त्याच्या ब्लॉकच्या रीडिंग्ज
+  const effectiveReadings = useMemo(() => {
+    if (!isAdmin && assignedBlock) {
+      return readings.filter((r) => r.blockId.toLowerCase() === assignedBlock.id.toLowerCase());
+    }
+    return readings;
+  }, [isAdmin, assignedBlock, readings]);
+
+  const effectiveMeters = useMemo(() => {
+    if (!isAdmin && assignedBlock) {
+      return meters.filter((m) => m.blockId.toLowerCase() === assignedBlock.id.toLowerCase());
+    }
+    return meters;
+  }, [isAdmin, assignedBlock, meters]);
+
+  // Date Range Presets & Filter
   const [dateRangePreset, setDateRangePreset] = useState<
     'TODAY' | 'YESTERDAY' | 'LAST7' | 'LAST14' | 'LAST30' | 'THIS_MONTH' | 'ALL' | 'CUSTOM'
   >('LAST7');
@@ -83,21 +122,18 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [chartDisplayMode, setChartDisplayMode] = useState<'grouped' | 'stacked'>('grouped');
 
-  // Selected Day Date specifically for the Day-Wise block cards and Day-Wise consumption graph
   const [selectedDayDate, setSelectedDayDate] = useState<string>(getTodayDateStr());
-  // Toggle between Day-Wise Block Breakdown (selected day according to upper cards) and Multi-Day Timeline
   const [graphViewMode, setGraphViewMode] = useState<'day_blocks' | 'multi_day'>('day_blocks');
 
-  // Distinct vibrant color palette for each and every block
   const BLOCK_DISTINCT_COLORS = [
-    '#2563eb', // Royal Blue (Block A)
-    '#059669', // Emerald Green (Block B)
-    '#d97706', // Amber Gold (Block C)
-    '#7c3aed', // Vivid Purple (Block D)
-    '#db2777', // Vibrant Pink (Block E)
-    '#0891b2', // Ocean Cyan (Block F)
-    '#ea580c', // Flame Orange (Block G)
-    '#4f46e5', // Deep Indigo (Block H)
+    '#2563eb',
+    '#059669',
+    '#d97706',
+    '#7c3aed',
+    '#db2777',
+    '#0891b2',
+    '#ea580c',
+    '#4f46e5',
   ];
 
   const getBlockColor = (block: any, index: number) => {
@@ -113,7 +149,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
   const gridStroke = isDarkMode ? '#334155' : '#e2e8f0';
   const axisStroke = isDarkMode ? '#94a3b8' : '#64748b';
 
-  // Helper date navigation
   const handlePrevDay = () => {
     const cur = new Date((selectedDayDate || todayStr) + 'T00:00:00');
     cur.setDate(cur.getDate() - 1);
@@ -126,12 +161,12 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     setSelectedDayDate(cur.toISOString().split('T')[0]);
   };
 
-  // Day-by-Day Aggregation of all readings across campus blocks
+  // Day-by-Day Aggregation
   const allDayAggregates = useMemo(() => {
     const map = new Map<string, DayAggregate>();
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-    readings.forEach((r) => {
+    effectiveReadings.forEach((r) => {
       const date = r.readingDate;
       if (!date) return;
 
@@ -157,7 +192,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
       entry.blockUnits[r.blockId] = (entry.blockUnits[r.blockId] || 0) + r.unitsConsumed;
     });
 
-    // Compute costs and averages for each day
     map.forEach((entry) => {
       entry.totalCost = +(entry.totalUnits * tariff.baseRatePerUnit).toFixed(2);
       const pfReadings = entry.readings.filter((r) => r.powerFactor && r.powerFactor > 0);
@@ -169,11 +203,9 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
       }
     });
 
-    // Sort by date descending (newest first)
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
-  }, [readings, tariff.baseRatePerUnit]);
+  }, [effectiveReadings, tariff.baseRatePerUnit]);
 
-  // Filtered Day Aggregates based on selected date presets & search
   const filteredDayAggregates = useMemo(() => {
     let list = allDayAggregates;
 
@@ -203,7 +235,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
       list = list.filter((d) => d.date === customDate);
     }
 
-    // Text search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((d) => 
@@ -216,7 +247,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     return list;
   }, [allDayAggregates, dateRangePreset, customDate, todayStr, yesterdayStr, searchQuery]);
 
-  // Campus-wide Daily KPIs across all blocks
   const kpis = useMemo(() => {
     const todayAgg = allDayAggregates.find((d) => d.date === todayStr);
     const yesterdayAgg = allDayAggregates.find((d) => d.date === yesterdayStr);
@@ -225,11 +255,9 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     const yesterdayUnits = yesterdayAgg ? yesterdayAgg.totalUnits : 0;
     const todayCost = +(todayUnits * tariff.baseRatePerUnit).toFixed(0);
 
-    // Difference between today and yesterday
     const diffUnits = todayUnits - yesterdayUnits;
     const diffPercent = yesterdayUnits > 0 ? ((diffUnits / yesterdayUnits) * 100).toFixed(1) : null;
 
-    // Peak day calculation across all aggregates
     let peakDay = { date: '-', units: 0 };
     allDayAggregates.forEach((d) => {
       if (d.totalUnits > peakDay.units) {
@@ -237,7 +265,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
       }
     });
 
-    // Total and average consumption across filtered days
     const totalFilteredUnits = filteredDayAggregates.reduce((sum, d) => sum + d.totalUnits, 0);
 
     const avgDailyUnits = filteredDayAggregates.length > 0 
@@ -259,9 +286,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     };
   }, [allDayAggregates, filteredDayAggregates, todayStr, yesterdayStr, tariff.baseRatePerUnit]);
 
-  // Block-wise statistics for Today or Selected Day (shared across upper cards & down-side graph)
   const blockDailyStats = useMemo(() => {
-    // Target date is explicitly driven by selectedDayDate, with fallback to today
     const targetDate = selectedDayDate || todayStr;
 
     const targetAgg = allDayAggregates.find((d) => d.date === targetDate);
@@ -272,16 +297,15 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
 
     const totalCampusUnits = targetAgg ? targetAgg.totalUnits : 0;
 
-    return blocks.map((b) => {
+    return effectiveBlocks.map((b) => {
       const units = targetAgg ? (targetAgg.blockUnits[b.id] || 0) : 0;
       const prevUnits = prevAgg ? (prevAgg.blockUnits[b.id] || 0) : 0;
       const cost = +(units * tariff.baseRatePerUnit).toFixed(0);
-      const sharePercent = totalCampusUnits > 0 ? ((units / totalCampusUnits) * 100).toFixed(1) : '0';
-      const blockMeters = meters.filter((m) => m.blockId === b.id);
+      const sharePercent = totalCampusUnits > 0 ? ((units / totalCampusUnits) * 100).toFixed(1) : '100';
+      const blockMeters = effectiveMeters.filter((m) => m.blockId.toLowerCase() === b.id.toLowerCase());
       
-      // Count how many meters of this block have logged on targetDate
       const loggedMetersCount = targetAgg 
-        ? targetAgg.readings.filter((r) => r.blockId === b.id).length 
+        ? targetAgg.readings.filter((r) => r.blockId.toLowerCase() === b.id.toLowerCase()).length 
         : 0;
 
       const diff = units - prevUnits;
@@ -299,9 +323,8 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         isFullyLogged: loggedMetersCount >= blockMeters.length && blockMeters.length > 0
       };
     });
-  }, [blocks, allDayAggregates, selectedDayDate, todayStr, tariff.baseRatePerUnit, meters]);
+  }, [effectiveBlocks, allDayAggregates, selectedDayDate, todayStr, tariff.baseRatePerUnit, effectiveMeters]);
 
-  // Chart Data for the Day-Wise Block Graph (according to upper side blocks data for selected day)
   const singleDayBlocksChartData = useMemo(() => {
     return blockDailyStats.map((item, idx) => {
       const color = getBlockColor(item.block, idx);
@@ -321,30 +344,28 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     });
   }, [blockDailyStats]);
 
-  // Chart Data: All Blocks chronologically ordered (oldest to newest)
   const chartData = useMemo(() => {
     const list = [...filteredDayAggregates].sort((a, b) => a.date.localeCompare(b.date));
     return list.map((d) => {
       const row: any = {
-        date: d.date.slice(5), // MM-DD
+        date: d.date.slice(5),
         fullDate: d.date,
         day: d.dayName,
         total: d.totalUnits,
         totalCost: d.totalCost,
       };
 
-      blocks.forEach((b) => {
+      effectiveBlocks.forEach((b) => {
         row[b.id] = d.blockUnits[b.id] || 0;
       });
 
       return row;
     });
-  }, [filteredDayAggregates, blocks]);
+  }, [filteredDayAggregates, effectiveBlocks]);
 
-  // Export CSV
   const handleExportCSV = () => {
     const headers = ['Date', 'Day', 'Total kWh', 'Total Cost (INR)', 'Power Factor', 'Meters Logged'];
-    blocks.forEach((b) => headers.push(`"${b.name} (kWh)"`));
+    effectiveBlocks.forEach((b) => headers.push(`"${b.name} (kWh)"`));
 
     const rows = filteredDayAggregates.map((d) => {
       const base = [
@@ -355,7 +376,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         d.avgPf,
         d.metersCount
       ];
-      blocks.forEach((b) => {
+      effectiveBlocks.forEach((b) => {
         base.push(d.blockUnits[b.id] || 0);
       });
       return base.join(',');
@@ -371,7 +392,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     document.body.removeChild(link);
   };
 
-  // Generate Standalone High-Resolution Printable HTML Document
   const generateDayWisePrintHtml = () => {
     const generatedOn = new Date().toLocaleString('en-IN', {
       day: '2-digit',
@@ -412,7 +432,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         <td style="padding: 6px 8px; border: 1px solid #cbd5e1; font-family: monospace; font-weight: 600; color: #0f172a;">
           ${d.date} (${d.dayName})
         </td>
-        ${blocks.map((b) => {
+        ${effectiveBlocks.map((b) => {
           const val = d.blockUnits[b.id] || 0;
           return `<td style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right; font-family: monospace; color: ${val > 0 ? '#0f172a' : '#94a3b8'};">${val > 0 ? val.toLocaleString() : '-'}</td>`;
         }).join('')}
@@ -429,135 +449,17 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
   <meta charset="UTF-8">
   <title>Day-Wise Energy Consumption Sheet - Campus Energy System</title>
   <style>
-    @page {
-      size: A4 portrait;
-      margin: 10mm;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: #0f172a;
-      background: #ffffff;
-      margin: 0;
-      padding: 16px;
-      font-size: 11px;
-      line-height: 1.4;
-    }
-    .sheet-header {
-      border-bottom: 2px solid #0f172a;
-      padding-bottom: 10px;
-      margin-bottom: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-    }
-    .title-area h1 {
-      font-size: 16px;
-      font-weight: 900;
-      margin: 0 0 2px 0;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #0f172a;
-    }
-    .title-area p {
-      margin: 0;
-      font-size: 11px;
-      color: #475569;
-    }
-    .meta-box {
-      text-align: right;
-      font-size: 10px;
-      color: #334155;
-    }
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-    .kpi-card {
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      padding: 8px 10px;
-      background: #f8fafc;
-    }
-    .kpi-label {
-      font-size: 9px;
-      text-transform: uppercase;
-      font-weight: 700;
-      color: #475569;
-      margin-bottom: 2px;
-    }
-    .kpi-val {
-      font-size: 15px;
-      font-weight: 900;
-      font-family: monospace;
-      color: #0f172a;
-    }
-    .kpi-sub {
-      font-size: 9px;
-      color: #64748b;
-      margin-top: 2px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 14px;
-      font-size: 10px;
-    }
-    th {
-      background: #f1f5f9;
-      color: #1e293b;
-      font-weight: 700;
-      padding: 6px 8px;
-      border: 1px solid #cbd5e1;
-      text-align: left;
-      text-transform: uppercase;
-      font-size: 9px;
-    }
-    .section-title {
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #1e293b;
-      margin: 10px 0 6px 0;
-      border-left: 3px solid #0284c7;
-      padding-left: 6px;
-    }
-    .signatures-section {
-      margin-top: 24px;
-      border-top: 1px dashed #94a3b8;
-      padding-top: 16px;
-      display: flex;
-      justify-content: space-between;
-      page-break-inside: avoid;
-    }
-    .sig-box {
-      text-align: center;
-      width: 180px;
-    }
-    .sig-line {
-      border-bottom: 1px solid #475569;
-      margin-top: 35px;
-      margin-bottom: 4px;
-    }
-    .sig-name {
-      font-weight: 700;
-      font-size: 10px;
-      color: #0f172a;
-    }
-    .sig-role {
-      font-size: 9px;
-      color: #64748b;
-    }
-    @media print {
-      body {
-        padding: 0;
-      }
-      .no-print {
-        display: none !important;
-      }
-    }
+    @page { size: A4 portrait; margin: 10mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #0f172a; margin: 0; padding: 16px; font-size: 11px; }
+    .sheet-header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; }
+    .title-area h1 { font-size: 16px; font-weight: 900; margin: 0; text-transform: uppercase; }
+    .title-area p { margin: 0; font-size: 11px; color: #475569; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+    .kpi-card { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; background: #f8fafc; }
+    .kpi-val { font-size: 15px; font-weight: 900; font-family: monospace; color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10px; }
+    th { background: #f1f5f9; padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left; }
+    @media print { body { padding: 0; } }
   </style>
 </head>
 <body>
@@ -566,46 +468,40 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
       <h1>Campus Energy Management System</h1>
       <p>Day-Wise Energy Consumption & Departmental Reconciliation Audit Sheet</p>
     </div>
-    <div class="meta-box">
+    <div style="text-align: right; font-size: 10px;">
       <div><strong>Report Scope:</strong> ${periodLabel}</div>
       <div><strong>Generated On:</strong> ${generatedOn}</div>
       <div><strong>Audited By:</strong> ${currentUser.name} (${currentUser.role})</div>
-      <div><strong>Base Tariff:</strong> ${tariff.currencySymbol}${tariff.baseRatePerUnit}/kWh</div>
     </div>
   </div>
 
   <div class="kpi-grid">
     <div class="kpi-card">
-      <div class="kpi-label">Today's Total Campus Load</div>
+      <div style="font-size: 9px; font-weight: 700; color: #475569;">Today's Load</div>
       <div class="kpi-val" style="color: #0284c7;">${kpis.todayUnits.toLocaleString()} kWh</div>
-      <div class="kpi-sub">Est. Cost: ${tariff.currencySymbol}${kpis.todayCost.toLocaleString()}</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Yesterday's Total Load</div>
+      <div style="font-size: 9px; font-weight: 700; color: #475569;">Yesterday's Load</div>
       <div class="kpi-val">${kpis.yesterdayUnits.toLocaleString()} kWh</div>
-      <div class="kpi-sub">${formatReadableDate(yesterdayStr)}</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Peak Daily Load</div>
+      <div style="font-size: 9px; font-weight: 700; color: #475569;">Peak Load</div>
       <div class="kpi-val" style="color: #b45309;">${kpis.peakDay.units.toLocaleString()} kWh</div>
-      <div class="kpi-sub">On: ${formatReadableDate(kpis.peakDay.date)}</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Daily Average Load</div>
-      <div class="kpi-val" style="color: #7e22ce;">${kpis.avgDailyUnits.toLocaleString()} kWh/day</div>
-      <div class="kpi-sub">Across ${kpis.filteredDaysCount} active logged days</div>
+      <div style="font-size: 9px; font-weight: 700; color: #475569;">Daily Average</div>
+      <div class="kpi-val" style="color: #7e22ce;">${kpis.avgDailyUnits.toLocaleString()} kWh</div>
     </div>
   </div>
 
-  <div class="section-title">1. Block-Wise Energy Distribution & Status</div>
-  <table>
+  <table style="margin-top: 14px;">
     <thead>
       <tr>
-        <th>Campus Block</th>
+        <th>Block</th>
         <th style="text-align: center;">Meters Logged</th>
-        <th style="text-align: right;">Energy Consumed (kWh)</th>
-        <th style="text-align: right;">Day Cost (${tariff.currencySymbol})</th>
-        <th style="text-align: center;">Load Share (%)</th>
+        <th style="text-align: right;">Energy (kWh)</th>
+        <th style="text-align: right;">Cost (${tariff.currencySymbol})</th>
+        <th style="text-align: center;">Share (%)</th>
       </tr>
     </thead>
     <tbody>
@@ -613,16 +509,14 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     </tbody>
   </table>
 
-  <div class="section-title">2. Master Day-by-Day Campus Energy Consumption Matrix</div>
   <table>
     <thead>
       <tr>
-        <th>Date & Day</th>
-        ${blocks.map((b) => `<th style="text-align: right;">${b.code} (kWh)</th>`).join('')}
-        <th style="text-align: right; color: #0284c7;">Total (kWh)</th>
-        <th style="text-align: right; color: #b45309;">Cost (${tariff.currencySymbol})</th>
+        <th>Date</th>
+        ${effectiveBlocks.map((b) => `<th style="text-align: right;">${b.code} (kWh)</th>`).join('')}
+        <th style="text-align: right;">Total (kWh)</th>
+        <th style="text-align: right;">Cost (${tariff.currencySymbol})</th>
         <th style="text-align: center;">Avg PF</th>
-        <th style="text-align: center;">Meters</th>
       </tr>
     </thead>
     <tbody>
@@ -630,36 +524,15 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
     </tbody>
   </table>
 
-  <div class="signatures-section">
-    <div class="sig-box">
-      <div class="sig-line"></div>
-      <div class="sig-name">${currentUser.name}</div>
-      <div class="sig-role">Operator / ${currentUser.role}</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-line"></div>
-      <div class="sig-name">Electrical Supervisor</div>
-      <div class="sig-role">Campus Substation Division</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-line"></div>
-      <div class="sig-name">Chief Electrical Engineer</div>
-      <div class="sig-role">Institutional Facility Director</div>
-    </div>
-  </div>
-
   <script>
     window.addEventListener('load', function() {
-      setTimeout(function() {
-        window.print();
-      }, 350);
+      setTimeout(function() { window.print(); }, 350);
     });
   </script>
 </body>
 </html>`;
   };
 
-  // Direct Print & Robust Standalone Tab Handlers
   const handleOpenInNewTab = () => {
     try {
       const html = generateDayWisePrintHtml();
@@ -676,7 +549,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         document.body.removeChild(a);
       }
     } catch (e) {
-      console.error('Failed to open printable sheet in new tab:', e);
       handleDownloadPrintHtml();
     }
   };
@@ -694,14 +566,13 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) {
-      console.error('Failed to download report:', e);
+      console.error(e);
     }
   };
 
   const handleDirectPrint = () => {
     try {
       const html = generateDayWisePrintHtml();
-      // Use an isolated hidden iframe to guarantee clean printing in iframe sandbox
       const iframe = document.createElement('iframe');
       iframe.setAttribute('style', 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;');
       document.body.appendChild(iframe);
@@ -717,7 +588,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
             iframe.contentWindow?.focus();
             iframe.contentWindow?.print();
           } catch (printErr) {
-            console.warn('Iframe print failed, fallback to window.print():', printErr);
             window.print();
           } finally {
             setTimeout(() => {
@@ -731,13 +601,22 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         window.print();
       }
     } catch (err) {
-      console.warn('Direct print failed, downloading printable HTML report:', err);
       handleDownloadPrintHtml();
     }
   };
 
   return (
     <div className="space-y-6 animate-fadeIn">
+      {/* १. इनचार्जसाठी सूचना पट्टी */}
+      {!isAdmin && assignedBlock && (
+        <div className="bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-2.5 shadow-sm">
+          <UserCheck className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span>
+            You are logged in as <strong>{assignedBlock.name} In-Charge</strong>. Viewing day-wise consumption records for <strong>{assignedBlock.name}</strong> only.
+          </span>
+        </div>
+      )}
+
       {/* Top Banner & Title */}
       <div className={`p-5 sm:p-6 rounded-2xl border transition-all ${
         isDarkMode 
@@ -763,19 +642,22 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
             <h1 className={`text-xl sm:text-2xl font-extrabold tracking-tight mt-1 ${
               isDarkMode ? 'text-white' : 'text-slate-900'
             }`}>
-              Day-Wise Energy Consumption System
+              {!isAdmin && assignedBlock 
+                ? `${assignedBlock.name} Day-Wise Energy Consumption`
+                : 'Day-Wise Energy Consumption System'}
             </h1>
             <p className={`text-xs sm:text-sm mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-              Day-by-day active energy tracking for each and every block. Any newly entered daily reading updates this section automatically in real time.
+              {!isAdmin && assignedBlock 
+                ? `Dedicated day-by-day active energy tracking for ${assignedBlock.name}.`
+                : 'Day-by-day active energy tracking for each and every block.'}
             </p>
           </div>
 
-          {/* Quick Action Controls: Log Reading, Export, Print */}
           <div className="flex flex-wrap items-center gap-2.5">
             {canEnterReading() && (
               <button
                 id="btn-daywise-enter-reading"
-                onClick={() => onOpenEnterReading(undefined, 'single')}
+                onClick={() => onOpenEnterReading(assignedBlock?.id, 'single')}
                 className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-950 bg-cyan-400 hover:bg-cyan-300 rounded-xl transition-all shadow-md shadow-cyan-500/20 cursor-pointer active:scale-95"
               >
                 <PlusCircle className="w-4 h-4" />
@@ -795,7 +677,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
               <span>Export CSV</span>
             </button>
 
-            {/* Print Sheet Action Button: Opens dedicated Print Options Modal */}
             <button
               id="btn-daywise-print-sheet"
               onClick={() => setIsPrintModalOpen(true)}
@@ -811,7 +692,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           </div>
         </div>
 
-        {/* Date Range Selector Toolbar (Campus Block selector removed as requested) */}
+        {/* Date Range Selector Toolbar */}
         <div className={`mt-5 pt-4 border-t flex flex-col md:flex-row md:items-center justify-between gap-3 ${
           isDarkMode ? 'border-slate-800/80' : 'border-slate-200'
         }`}>
@@ -824,7 +705,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
             </span>
           </div>
 
-          {/* Date Range Preset Selector & Custom Date Picker */}
           <div className="flex flex-wrap items-center gap-2">
             <div className={`p-1 rounded-xl border flex items-center gap-1 ${
               isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-300'
@@ -871,9 +751,8 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         </div>
       </div>
 
-      {/* Primary KPI Cards Grid (High contrast in Light & Dark Mode) */}
+      {/* Primary KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Today's Daily Consumption */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/90 border-slate-800' 
@@ -918,7 +797,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Yesterday's Daily Consumption */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/90 border-slate-800' 
@@ -956,7 +834,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           </div>
         </div>
 
-        {/* Card 3: Highest / Peak Day Consumption */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/90 border-slate-800' 
@@ -994,7 +871,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           </div>
         </div>
 
-        {/* Card 4: Daily Average Consumption */}
         <div className={`p-5 rounded-2xl border transition-all ${
           isDarkMode 
             ? 'bg-slate-900/90 border-slate-800' 
@@ -1033,7 +909,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         </div>
       </div>
 
-      {/* Each & Every Block Day-Wise KPI Cards Grid */}
+      {/* Block Day-Wise KPI Cards */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1041,11 +917,12 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
             <h2 className={`text-sm font-bold uppercase tracking-wider ${
               isDarkMode ? 'text-slate-200' : 'text-slate-800'
             }`}>
-              Day-Wise Consumption of Each & Every Block
+              {!isAdmin && assignedBlock
+                ? `${assignedBlock.name} Day-Wise Performance`
+                : 'Day-Wise Consumption of Each & Every Block'}
             </h2>
           </div>
 
-          {/* Quick Selected Day Indicator & Switchers */}
           <div className="flex flex-wrap items-center gap-2">
             <span className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
               Selected Date:
@@ -1092,7 +969,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className={`grid gap-4 ${!isAdmin && assignedBlock ? 'grid-cols-1 md:grid-cols-2 max-w-2xl' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4'}`}>
           {blockDailyStats.map((item) => {
             const { block, units, cost, sharePercent, totalMeters, loggedMetersCount, isFullyLogged } = item;
 
@@ -1105,7 +982,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                     : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
                 }`}
               >
-                {/* Top header: Block badge and status */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span 
@@ -1127,7 +1003,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                   </span>
                 </div>
 
-                {/* Day Units Number */}
                 <div className="flex items-baseline justify-between">
                   <div>
                     <div className={`text-[10px] uppercase font-bold tracking-wider ${
@@ -1160,7 +1035,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                   </div>
                 </div>
 
-                {/* Meter status & percentage share */}
                 <div className={`mt-3 pt-3 border-t flex items-center justify-between text-xs ${
                   isDarkMode ? 'border-slate-800/80' : 'border-slate-100'
                 }`}>
@@ -1184,13 +1058,12 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                   </span>
                 </div>
 
-                {/* Quick Add Reading button on hover / active */}
                 {canEnterReading(block.id) && (
                   <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-xs ${
                     isDarkMode ? 'border-slate-800' : 'border-slate-100'
                   }`}>
                     <span className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                      In-Charge: <strong className={isDarkMode ? 'text-slate-200' : 'text-slate-800'}>{block.inchargeName || 'Lead Tech'}</strong>
+                      In-Charge: <strong className={isDarkMode ? 'text-slate-200' : 'text-slate-800'}>{block.inchargeName || currentUser.name}</strong>
                     </span>
                     <button
                       type="button"
@@ -1213,7 +1086,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
       <div className={`rounded-2xl border overflow-hidden ${
         isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
       }`}>
-        {/* Table Header & Toolbar */}
         <div className={`p-4 sm:p-5 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${
           isDarkMode ? 'border-slate-800' : 'border-slate-200'
         }`}>
@@ -1222,7 +1094,11 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
               isDarkMode ? 'text-white' : 'text-slate-900'
             }`}>
               <Calendar className={`w-4 h-4 ${isDarkMode ? 'text-cyan-400' : 'text-cyan-600'}`} />
-              <span>Day-Wise Consumption Log & Block Breakdown Matrix</span>
+              <span>
+                {!isAdmin && assignedBlock
+                  ? `${assignedBlock.name} Day-Wise Log Matrix`
+                  : 'Day-Wise Consumption Log & Block Breakdown Matrix'}
+              </span>
             </h3>
             <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
               Showing {filteredDayAggregates.length} logged calendar days. Click any date row to expand individual sub-meter readings.
@@ -1247,7 +1123,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           </div>
         </div>
 
-        {/* Table Content */}
         {filteredDayAggregates.length === 0 ? (
           <div className="py-12 px-4 text-center">
             <Calendar className={`w-10 h-10 mx-auto mb-2 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} />
@@ -1268,7 +1143,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
               }`}>
                 <tr>
                   <th className="py-3 px-4">Date & Day</th>
-                  {blocks.map((b) => (
+                  {effectiveBlocks.map((b) => (
                     <th key={b.id} className="py-3 px-3 text-right">
                       <span className="inline-flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full shadow-xs" style={{ backgroundColor: b.color }}></span>
@@ -1304,7 +1179,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                             : isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'
                         }`}
                       >
-                        {/* Date & Day */}
                         <td className="py-3 px-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span className={`font-mono font-bold ${
@@ -1329,8 +1203,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                           </div>
                         </td>
 
-                        {/* Each Block's kWh for this day */}
-                        {blocks.map((b) => {
+                        {effectiveBlocks.map((b) => {
                           const units = dayAgg.blockUnits[b.id] || 0;
                           return (
                             <td key={b.id} className="py-3 px-3 text-right font-mono font-semibold">
@@ -1345,31 +1218,27 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                           );
                         })}
 
-                        {/* Total Daily kWh */}
                         <td className={`py-3 px-4 text-right font-mono font-black text-sm ${
                           isDarkMode ? 'text-cyan-400' : 'text-cyan-700'
                         }`}>
                           {dayAgg.totalUnits.toLocaleString()}
                         </td>
 
-                        {/* Total Day Cost */}
                         <td className={`py-3 px-4 text-right font-mono font-bold ${
                           isDarkMode ? 'text-amber-400' : 'text-amber-700'
                         }`}>
                           {tariff.currencySymbol}{dayAgg.totalCost.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                         </td>
 
-                        {/* Avg PF */}
                         <td className={`py-3 px-3 text-center font-mono font-semibold ${
                           isDarkMode ? 'text-purple-400' : 'text-purple-700'
                         }`}>
                           {dayAgg.avgPf.toFixed(2)}
                         </td>
 
-                        {/* Meters Recorded */}
                         <td className="py-3 px-3 text-center">
                           <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
-                            dayAgg.metersCount >= meters.length 
+                            dayAgg.metersCount >= effectiveMeters.length 
                               ? isDarkMode 
                                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
                                 : 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -1381,7 +1250,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                           </span>
                         </td>
 
-                        {/* Expand Button */}
                         <td className="py-3 px-3 text-center">
                           <button
                             type="button"
@@ -1392,10 +1260,9 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                         </td>
                       </tr>
 
-                      {/* Expanded Sub-Meter Readings Details for this Date */}
                       {isExpanded && (
                         <tr className={isDarkMode ? 'bg-slate-950/60' : 'bg-slate-50/80'}>
-                          <td colSpan={6 + blocks.length} className="p-4">
+                          <td colSpan={6 + effectiveBlocks.length} className="p-4">
                             <div className={`p-4 rounded-xl border ${
                               isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
                             }`}>
@@ -1436,7 +1303,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                                     isDarkMode ? 'divide-slate-800/60' : 'divide-slate-100'
                                   }`}>
                                     {dayAgg.readings.map((r: any) => {
-                                      const blk = blocks.find((b) => b.id === r.blockId);
+                                      const blk = blocks.find((b) => b.id.toLowerCase() === r.blockId.toLowerCase());
                                       const cost = (r.unitsConsumed * tariff.baseRatePerUnit).toFixed(2);
                                       return (
                                         <tr key={r.id} className={isDarkMode ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50'}>
@@ -1489,11 +1356,10 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
         )}
       </div>
 
-      {/* Visual Day-Wise Consumption Graph (Down Side with Day/Date Selection and Direct Sync to Upper Side Blocks Data) */}
+      {/* Visual Day-Wise Consumption Graph */}
       <div className={`p-5 sm:p-6 rounded-2xl border transition-all ${
         isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
       }`}>
-        {/* Graph Header: Title & Day/Date Selection Options */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-2">
@@ -1520,14 +1386,12 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
             </h3>
             <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
               {graphViewMode === 'day_blocks'
-                ? 'Showing each and every block consumption (kWh) directly corresponding to the upper side blocks data for the selected date.'
+                ? 'Showing each active block consumption directly for the selected date.'
                 : 'Showing chronological daily active kWh consumption per block across recorded dates.'}
             </p>
           </div>
 
-          {/* Date Selection Options right on the Consumption Graph */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* View Mode Toggle: Day-Wise Blocks (default) vs Multi-Day Progression */}
             <div className={`p-1 rounded-xl border flex items-center gap-1 ${
               isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-100 border-slate-300'
             }`}>
@@ -1555,7 +1419,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
               </button>
             </div>
 
-            {/* Day / Date Selection Controls Available Right in the Graph */}
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -1570,7 +1433,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              {/* Date Select Dropdown of All Logged Dates */}
               <div className="relative">
                 <select
                   id="graph-date-select"
@@ -1595,7 +1457,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                 <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
               </div>
 
-              {/* Date Picker Input for Calendar Date Selection */}
               <input
                 id="graph-date-picker"
                 type="date"
@@ -1636,7 +1497,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           </div>
         </div>
 
-        {/* Distinct Color Legend Badges for Each and Every Block (synchronized with Upper Side Cards) */}
+        {/* Legend */}
         <div className={`flex flex-wrap items-center gap-2 mb-4 pb-3 border-b ${
           isDarkMode ? 'border-slate-800' : 'border-slate-200'
         }`}>
@@ -1674,7 +1535,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           ))}
         </div>
 
-        {/* GRAPH VIEW 1: Day-Wise Block Graph for Selected Day (Matches Upper Side Blocks Data) */}
         {graphViewMode === 'day_blocks' ? (
           <div className="h-72 sm:h-88 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -1792,7 +1652,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
             </ResponsiveContainer>
           </div>
         ) : (
-          /* GRAPH VIEW 2: Multi-Day Timeline Progression */
           <div className="h-72 sm:h-88 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 5 }}>
@@ -1876,7 +1735,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                     return blk ? `${blk.name} (${blk.code})` : value;
                   }}
                 />
-                {blocks.map((b, idx) => {
+                {effectiveBlocks.map((b, idx) => {
                   const color = getBlockColor(b, idx);
                   return (
                     <Bar 
@@ -1901,7 +1760,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
           <div className={`w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${
             isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
-            {/* Modal Header */}
             <div className={`p-4 sm:p-5 border-b flex items-center justify-between ${
               isDarkMode ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'
             }`}>
@@ -1929,7 +1787,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
               </button>
             </div>
 
-            {/* Modal Action Bar */}
             <div className={`p-3 sm:px-5 border-b flex flex-wrap items-center justify-between gap-3 ${
               isDarkMode ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-white'
             }`}>
@@ -1963,7 +1820,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                       ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700' 
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                   }`}
-                  title="Opens document in a clean new window for unrestricted browser printing"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-cyan-500" />
                   <span>Open Printable Tab</span>
@@ -1983,12 +1839,10 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
               </div>
             </div>
 
-            {/* Print Sheet Document Preview Area */}
             <div className={`p-4 sm:p-6 overflow-y-auto flex-1 ${
               isDarkMode ? 'bg-slate-950/80' : 'bg-slate-100'
             }`}>
               <div className="max-w-3xl mx-auto bg-white text-slate-900 p-6 sm:p-8 rounded-xl shadow-md border border-slate-300 text-xs font-sans">
-                {/* Official Header */}
                 <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start">
                   <div>
                     <h2 className="text-base font-black uppercase tracking-wide text-slate-900">
@@ -2005,7 +1859,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                   </div>
                 </div>
 
-                {/* Summary KPIs */}
                 <div className="grid grid-cols-4 gap-2 mb-4">
                   <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50">
                     <div className="text-[10px] uppercase font-bold text-slate-500">Today's Load</div>
@@ -2029,7 +1882,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                   </div>
                 </div>
 
-                {/* Block Breakdown */}
                 <div className="mb-4">
                   <h4 className="text-[11px] font-extrabold uppercase text-slate-800 border-l-3 border-cyan-600 pl-2 mb-2">
                     Block-Wise Consumption Summary
@@ -2058,7 +1910,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                   </table>
                 </div>
 
-                {/* Day-by-day table sample */}
                 <div className="mb-4">
                   <h4 className="text-[11px] font-extrabold uppercase text-slate-800 border-l-3 border-cyan-600 pl-2 mb-2">
                     Day-Wise Log Matrix
@@ -2067,7 +1918,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                     <thead>
                       <tr className="bg-slate-100 text-slate-700 border-b border-slate-300">
                         <th className="p-2 border border-slate-300">Date</th>
-                        {blocks.map((b) => (
+                        {effectiveBlocks.map((b) => (
                           <th key={b.id} className="p-2 border border-slate-300 text-right">{b.code}</th>
                         ))}
                         <th className="p-2 border border-slate-300 text-right font-bold text-cyan-800">Total kWh</th>
@@ -2078,7 +1929,7 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                       {filteredDayAggregates.slice(0, 10).map((d) => (
                         <tr key={d.date}>
                           <td className="p-2 border border-slate-300 font-mono font-semibold">{d.date} ({d.dayName})</td>
-                          {blocks.map((b) => (
+                          {effectiveBlocks.map((b) => (
                             <td key={b.id} className="p-2 border border-slate-300 text-right font-mono">
                               {(d.blockUnits[b.id] || 0).toLocaleString()}
                             </td>
@@ -2091,7 +1942,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
                   </table>
                 </div>
 
-                {/* Signatures */}
                 <div className="border-t border-dashed border-slate-400 pt-4 mt-6 flex justify-between items-end">
                   <div className="text-center w-36">
                     <div className="border-b border-slate-800 mb-1 h-6"></div>
@@ -2112,7 +1962,6 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className={`p-4 border-t flex items-center justify-end gap-2.5 ${
               isDarkMode ? 'border-slate-800 bg-slate-950/60' : 'border-slate-200 bg-slate-50'
             }`}>
