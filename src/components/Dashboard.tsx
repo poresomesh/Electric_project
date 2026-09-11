@@ -126,10 +126,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Filtered readings list
   const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
-
 const filteredReadings = useMemo(() => {
     return readings.filter((r) => {
-      // १. मजबूत आणि लवचिक Block filter
+      // १. सर्व प्रकारच्या Block ID / Code ला सपोर्ट करणारा फिल्टर
       if (activeBlockId !== 'ALL') {
         const rBlk = (r.blockId || '').trim().toLowerCase();
         const actBlk = (activeBlockId || '').trim().toLowerCase();
@@ -137,28 +136,25 @@ const filteredReadings = useMemo(() => {
         const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
         const assignedName = (assignedBlock?.name || '').trim().toLowerCase();
 
-        const isExactMatch = 
-          rBlk === actBlk || 
-          (assignedCode && rBlk === assignedCode) || 
-          (assignedId && rBlk === assignedId) ||
-          (assignedName && rBlk === assignedName);
+        const isMatch = 
+          rBlk === actBlk ||
+          rBlk === assignedCode ||
+          rBlk === assignedId ||
+          rBlk === assignedName ||
+          (actBlk.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a')) ||
+          (assignedCode.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a'));
 
-        // सेफ फॉलबॅक: जर 'a' ब्लॉक असेल तर कोणतीही व्हॅरिएंट मॅच करणे
-        const isFuzzyMatch = 
-          (actBlk.includes('a') || assignedCode.includes('a')) && 
-          (rBlk === 'block-a' || rBlk === 'blk-a' || rBlk === 'a' || rBlk.includes('block a'));
-
-        if (!isExactMatch && !isFuzzyMatch) return false;
+        if (!isMatch) return false;
       }
-      
+
       // २. Date / Month filter
       if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
       if (selectedDateFilter.startsWith('MONTH_')) {
         const targetMo = selectedDateFilter.replace('MONTH_', '');
         if (!r.readingDate.startsWith(targetMo)) return false;
       }
-      
-      // ३. Search term
+
+      // ३. Search query
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
         const blockName = blocks.find((b) => b.id.toLowerCase() === (r.blockId || '').toLowerCase())?.name.toLowerCase() || '';
@@ -170,6 +166,7 @@ const filteredReadings = useMemo(() => {
           (r.readingDate && r.readingDate.includes(query))
         );
       }
+
       return true;
     });
   }, [readings, activeBlockId, assignedBlock, selectedDateFilter, searchTerm, blocks]);
@@ -187,14 +184,13 @@ let relevantReadings = readings;
         const actBlk = (activeBlockId || '').trim().toLowerCase();
         const assignedCode = (assignedBlock?.code || '').trim().toLowerCase();
         const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
-        const assignedName = (assignedBlock?.name || '').trim().toLowerCase();
 
         return (
           rBlk === actBlk ||
-          (assignedCode && rBlk === assignedCode) ||
-          (assignedId && rBlk === assignedId) ||
-          (assignedName && rBlk === assignedName) ||
-          ((actBlk.includes('a') || assignedCode.includes('a')) && (rBlk === 'block-a' || rBlk === 'blk-a' || rBlk === 'a'))
+          rBlk === assignedCode ||
+          rBlk === assignedId ||
+          (actBlk.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a')) ||
+          (assignedCode.includes('a') && (rBlk.includes('a') || rBlk === 'block-a' || rBlk === 'blk-a'))
         );
       });
     }
