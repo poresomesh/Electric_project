@@ -504,16 +504,16 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}deleted_notification_ids`, JSON.stringify(deletedNotificationIds));
   }, [deletedNotificationIds]);
 
-  // Initial Load from Cloud DB
+  // Initial Load from Cloud DB (ॲप उघडल्यावर किंवा रिफ्रेश झाल्यावर क्लाउडवरून लेटेस्ट डेटा लोड करणे)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const remote = await fetchSharedState();
       if (cancelled) return;
-      if (remote && ((remote.readings && remote.readings.length > 0) || (remote.version || 0) > 0 || remote.users?.length)) {
+      if (remote && remote.readings && remote.readings.length > 0) {
         lastSeenVersionRef.current = remote.version || 0;
-        if (remote.readings?.length) setReadings(remote.readings);
-        if (remote.meters?.length) setMeters(remote.meters);
+        setReadings(remote.readings);
+        if (remote.meters && remote.meters.length > 0) setMeters(remote.meters);
         setLastSyncedAt(new Date());
         setSyncStatus('cloud');
       }
@@ -903,8 +903,8 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return true;
   };
 
-  // Add Meter Reading - तात्काळ आणि १००% सुरक्षित सेव्हिंग
-const addReading = async ({
+  // Add Meter Reading - क्लाउड डेटाबेस (Neon DB) वर सक्तीने सेव्ह करणारे अचूक फंक्शन
+  const addReading = async ({
     blockId,
     meterId,
     readingDate,
@@ -1013,7 +1013,7 @@ const addReading = async ({
         : m
     );
 
-    // १. युझरच्या स्क्रीनवर आणि लोकल स्टोरेजमध्ये तात्काळ अपडेट करणे
+    // १. लोकल स्टोरेज आणि स्क्रीनवर तात्काळ अपडेट करणे
     try {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
       localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
@@ -1024,17 +1024,17 @@ const addReading = async ({
     setReadings(updatedReadings);
     setMeters(updatedMeters);
 
-    // २. डेटाबेस / सर्व्हरवर (Neon DB) डेटा सक्तीने सेव्ह करणे (महत्त्वाचे: यामुळे मोबाईलवर किंवा रिफ्रेश केल्यावर 0 होणार नाही)
+    // २. क्लाउड सर्व्हरवर (Neon DB) सक्तीने डेटा पुश् करणे (रिफ्रेश केल्यावर किंवा मोबाईलवर डेटा कायम राहण्यासाठी)
     try {
       const saved = await saveSharedState({
         readings: updatedReadings,
         meters: updatedMeters,
+        version: lastSeenVersionRef.current + 1,
       });
       if (saved && saved.version) {
         lastSeenVersionRef.current = saved.version;
         setLastSyncedAt(new Date());
-      } else {
-        console.warn('Server sync response was empty, but local state is saved.');
+        setSyncStatus('cloud');
       }
     } catch (syncErr) {
       console.error('Failed to sync reading to server database:', syncErr);
@@ -1139,6 +1139,7 @@ const addReading = async ({
     await saveSharedState({
       readings: updatedReadings,
       meters: updatedMeters,
+      version: lastSeenVersionRef.current + 1,
     });
 
     return {
