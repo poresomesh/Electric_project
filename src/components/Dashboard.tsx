@@ -127,38 +127,52 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Filtered readings list
   const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
 
-  const filteredReadings = useMemo(() => {
+const filteredReadings = useMemo(() => {
     return readings.filter((r) => {
-      // Block filter
-     if (activeBlockId !== 'ALL') {
-        const matchId = r.blockId.toLowerCase();
-        const targetId = activeBlockId.toLowerCase();
-        const targetCode = assignedBlock ? assignedBlock.code.toLowerCase() : '';
-        if (matchId !== targetId && matchId !== targetCode) return false;
+      // १. मजबूत आणि लवचिक Block filter
+      if (activeBlockId !== 'ALL') {
+        const rBlk = (r.blockId || '').trim().toLowerCase();
+        const actBlk = (activeBlockId || '').trim().toLowerCase();
+        const assignedCode = (assignedBlock?.code || '').trim().toLowerCase();
+        const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
+        const assignedName = (assignedBlock?.name || '').trim().toLowerCase();
+
+        const isExactMatch = 
+          rBlk === actBlk || 
+          (assignedCode && rBlk === assignedCode) || 
+          (assignedId && rBlk === assignedId) ||
+          (assignedName && rBlk === assignedName);
+
+        // सेफ फॉलबॅक: जर 'a' ब्लॉक असेल तर कोणतीही व्हॅरिएंट मॅच करणे
+        const isFuzzyMatch = 
+          (actBlk.includes('a') || assignedCode.includes('a')) && 
+          (rBlk === 'block-a' || rBlk === 'blk-a' || rBlk === 'a' || rBlk.includes('block a'));
+
+        if (!isExactMatch && !isFuzzyMatch) return false;
       }
       
-      // Date / Month filter
+      // २. Date / Month filter
       if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
       if (selectedDateFilter.startsWith('MONTH_')) {
         const targetMo = selectedDateFilter.replace('MONTH_', '');
         if (!r.readingDate.startsWith(targetMo)) return false;
       }
       
-      // Search term
+      // ३. Search term
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
-        const blockName = blocks.find((b) => b.id === r.blockId)?.name.toLowerCase() || '';
+        const blockName = blocks.find((b) => b.id.toLowerCase() === (r.blockId || '').toLowerCase())?.name.toLowerCase() || '';
         return (
-          r.meterNumber.toLowerCase().includes(query) ||
-          r.enteredByName.toLowerCase().includes(query) ||
+          (r.meterNumber && r.meterNumber.toLowerCase().includes(query)) ||
+          (r.enteredByName && r.enteredByName.toLowerCase().includes(query)) ||
           (r.notes && r.notes.toLowerCase().includes(query)) ||
           blockName.includes(query) ||
-          r.readingDate.includes(query)
+          (r.readingDate && r.readingDate.includes(query))
         );
       }
       return true;
     });
-  }, [readings, activeBlockId, selectedDateFilter, searchTerm, blocks]);
+  }, [readings, activeBlockId, assignedBlock, selectedDateFilter, searchTerm, blocks]);
 
   // Overall KPIs calculation
   const kpis = useMemo(() => {
@@ -166,9 +180,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const yesterdayDate = getYesterdayDateStr();
     const targetMonth = getCurrentMonthStr();
 
-    let relevantReadings = readings;
+let relevantReadings = readings;
     if (activeBlockId !== 'ALL') {
-      relevantReadings = relevantReadings.filter((r) => r.blockId.toLowerCase() === activeBlockId.toLowerCase());
+      relevantReadings = relevantReadings.filter((r) => {
+        const rBlk = (r.blockId || '').trim().toLowerCase();
+        const actBlk = (activeBlockId || '').trim().toLowerCase();
+        const assignedCode = (assignedBlock?.code || '').trim().toLowerCase();
+        const assignedId = (assignedBlock?.id || '').trim().toLowerCase();
+        const assignedName = (assignedBlock?.name || '').trim().toLowerCase();
+
+        return (
+          rBlk === actBlk ||
+          (assignedCode && rBlk === assignedCode) ||
+          (assignedId && rBlk === assignedId) ||
+          (assignedName && rBlk === assignedName) ||
+          ((actBlk.includes('a') || assignedCode.includes('a')) && (rBlk === 'block-a' || rBlk === 'blk-a' || rBlk === 'a'))
+        );
+      });
     }
 
     const todayUnits = relevantReadings
