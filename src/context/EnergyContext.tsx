@@ -655,26 +655,33 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentUser(INITIAL_USERS.find((user) => user.role === 'viewer') || INITIAL_USERS[0]);
   };
 
+// 1. फक्त लॉगिन असलेल्या ब्लॉक इनचार्जला त्याच्याच ब्लॉकचा डेटा दाखवा
   const visibleBlocks = useMemo(() => {
-    if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
-      return blocks;
+    if (isAdmin) return blocks;
+    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      return blocks.filter((b) => b.id === currentUser.assignedBlockId);
     }
-    return blocks.filter((b) => b.id === currentUser.assignedBlockId);
+    return isViewer ? blocks : [];
   }, [blocks, isAdmin, isViewer, currentUser.assignedBlockId]);
 
   const visibleMeters = useMemo(() => {
-    if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
-      return meters;
+    if (isAdmin) return meters;
+    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      return meters.filter((m) => m.blockId === currentUser.assignedBlockId);
     }
-    return meters.filter((m) => m.blockId === currentUser.assignedBlockId);
+    return isViewer ? meters : [];
   }, [meters, isAdmin, isViewer, currentUser.assignedBlockId]);
 
- const visibleReadings = useMemo(() => {
+  const visibleReadings = useMemo(() => {
     let list = readings;
-    if (!isAdmin && !isViewer && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      list = readings.filter((r) => r.blockId === currentUser.assignedBlockId);
+    if (!isAdmin) {
+      if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+        list = readings.filter((r) => r.blockId === currentUser.assignedBlockId);
+      } else if (!isViewer) {
+        list = [];
+      }
     }
-    // सर्वात नवीन रीडिंग नेहमी वर दिसण्यासाठी सॉर्टिंग
+
     return [...list].sort((a, b) => {
       const dateCmp = (b.readingDate || '').localeCompare(a.readingDate || '');
       if (dateCmp !== 0) return dateCmp;
@@ -875,7 +882,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     saveSharedState({ users: updatedUsers });
   };
 
-  const updateUser = (id: string, updates: Partial<User> & { newId?: string }) => {
+const updateUser = async (id: string, updates: Partial<User> & { newId?: string }) => {
     if (currentUser.role !== 'admin') return;
     const targetId = updates.newId?.trim() || updates.id || id;
     const existing = users.find((user) => user.id === id);
@@ -886,14 +893,28 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (updates.role === 'admin') return;
     
     const updatedUsers = users.map((u) => (u.id === id ? { ...u, ...updates, id: targetId } : u));
-    setUsers(updatedUsers);
-    saveSharedState({ users: updatedUsers });
+    
+    const updatedBlocks = blocks.map((b) =>
+      b.inchargeId === id || b.inchargeId === targetId
+        ? { ...b, inchargeId: targetId, inchargeName: updates.name || b.inchargeName }
+        : b
+    );
 
-    if (targetId !== id) {
-      setBlocks((prev) =>
-        prev.map((b) => (b.inchargeId === id ? { ...b, inchargeId: targetId } : b))
-      );
+    // १. आधी थेट डेटाबेसमध्ये सेव्ह होईपर्यंत 'await' करा
+    const saved = await saveSharedState({
+      users: updatedUsers,
+      blocks: updatedBlocks,
+    });
+
+    if (saved?.version) {
+      lastSeenVersionRef.current = saved.version;
+      setLastSyncedAt(new Date());
     }
+
+    // २. डेटाबेस सेव्ह झाल्यावरच लोकल स्टेट बदला
+    setUsers(updatedUsers);
+    setBlocks(updatedBlocks);
+
     if (currentUser.id === id) {
       setCurrentUser((prev) => ({ ...prev, ...updates, id: targetId }));
     }
