@@ -56,6 +56,7 @@ export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
     meters,
     readings,
     tariff,
+    visibleBlocks,
     isAdmin,
     isBlockIncharge,
     isDarkMode,
@@ -66,25 +67,32 @@ export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
   const [activeTab, setActiveTab] = useState<'single' | 'batch4m'>(initialMode);
 
   // User permitted blocks
-  const availableBlocks = useMemo(() => {
+const availableBlocks = useMemo(() => {
     if (isAdmin) return blocks;
-    if (isBlockIncharge && currentUser.assignedBlockId) {
-      return blocks.filter((b) => b.id === currentUser.assignedBlockId);
+    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      const match = blocks.filter(
+        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase()
+      );
+      if (match.length > 0) return match;
     }
-    return [];
-  }, [isAdmin, isBlockIncharge, currentUser, blocks]);
+    const byIncharge = blocks.filter(
+      (b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase()
+    );
+    if (byIncharge.length > 0) return byIncharge;
+    return blocks;
+  }, [isAdmin, currentUser, blocks]);
 
- // इनचार्ज लॉगिन असल्यास त्याचा पहिला उपलब्ध ब्लॉक आपोआप निवडणे
+  // इनचार्ज लॉगिन असल्यास त्याचा पहिला उपलब्ध ब्लॉक आपोआप निवडणे
   const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
-    return visibleBlocks[0]?.id || '';
+    return availableBlocks[0]?.id || '';
   });
 
-  // जर visibleBlocks लोड व्हायला काही सेकंद उशीर झाला, तर ब्लॉक सिलेक्ट करणे
+  // जर availableBlocks लोड व्हायला काही सेकंद उशीर झाला, तर ब्लॉक सिलेक्ट करणे
   useEffect(() => {
-    if (!selectedBlockId && visibleBlocks.length > 0) {
-      setSelectedBlockId(visibleBlocks[0].id);
+    if (!selectedBlockId && availableBlocks.length > 0) {
+      setSelectedBlockId(availableBlocks[0].id);
     }
-  }, [visibleBlocks, selectedBlockId]);
+  }, [availableBlocks, selectedBlockId]);
   const [selectedMeterId, setSelectedMeterId] = useState<string>('');
   const [readingDate, setReadingDate] = useState<string>(getTodayDateStr());
   const [readingTime, setReadingTime] = useState<string>('08:00');
