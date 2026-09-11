@@ -172,7 +172,6 @@ const EnergyContext = createContext<EnergyContextType | undefined>(undefined);
 
 const STORAGE_KEY_PREFIX = 'voltwise_energy_';
 
-// ब्लॉक आयडीचे मूळ अक्षर (उदा. 'block-b' -> 'b', 'blk-b' -> 'b') काढणारा सुरक्षित हेल्पर
 const normalizeBlockStr = (val?: string) => {
   if (!val) return '';
   return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
@@ -280,7 +279,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   });
 
   const [meters, setMeters] = useState<Meter[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}meters`);
+    const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}meters`) || localStorage.getItem('voltwise_meters');
     return saved ? JSON.parse(saved) : INITIAL_METERS;
   });
 
@@ -447,6 +446,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}meters`, JSON.stringify(meters));
+    localStorage.setItem('voltwise_meters', JSON.stringify(meters));
   }, [meters]);
 
   useEffect(() => {
@@ -504,86 +504,16 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}deleted_notification_ids`, JSON.stringify(deletedNotificationIds));
   }, [deletedNotificationIds]);
 
-  useEffect(() => {
-    let active = true;
-    fetch('/api/health', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!active) return;
-        if (data?.isCloudSynced) {
-          setSyncStatus('cloud');
-        } else if (data?.ok) {
-          setSyncStatus('local');
-        } else {
-          setSyncStatus('local');
-        }
-      })
-      .catch(() => {
-        if (active) setSyncStatus('local');
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const collectSharedState = (): Omit<SharedCampusState, 'version'> => ({
-    users,
-    blocks,
-    meters,
-    readings,
-    tariff,
-    msebBlocks,
-    msebReadings,
-    msebTariffs,
-    deletedReadingIds,
-    deletedMsebReadingIds,
-    deletedNotificationIds,
-    deletedUserIds,
-    dailyLimits,
-    exceedances,
-    notifications,
-  });
-
-  const sharedStateRef = useRef<Omit<SharedCampusState, 'version'>>(collectSharedState());
-  sharedStateRef.current = collectSharedState();
-
-  const applySharedState = (remote: SharedCampusState) => {
-    lastSeenVersionRef.current = remote.version || 0;
-    if (remote.users?.length) setUsers(remote.users);
-    if (remote.blocks?.length) {
-      setBlocks(
-        remote.blocks.filter(
-          (b) =>
-            b.name?.trim().toLowerCase() !== 'e block' &&
-            b.name?.trim().toLowerCase() !== 'block e' &&
-            b.name?.trim().toLowerCase() !== 'e' &&
-            b.code?.trim().toUpperCase() !== 'BLK-E' &&
-            b.id !== 'block-e'
-        )
-      );
-    }
-    if (remote.meters?.length) setMeters(remote.meters);
-    if (remote.readings) setReadings([...remote.readings]);
-    if (remote.tariff) setTariff(remote.tariff);
-    if (remote.msebBlocks?.length) setMsebBlocks(remote.msebBlocks);
-    if (remote.msebReadings) setMsebReadings(remote.msebReadings);
-    if (remote.msebTariffs) setMsebTariffs(remote.msebTariffs);
-    if (remote.deletedReadingIds) setDeletedReadingIds(remote.deletedReadingIds);
-    if (remote.deletedMsebReadingIds) setDeletedMsebReadingIds(remote.deletedMsebReadingIds);
-    if (remote.deletedNotificationIds) setDeletedNotificationIds(remote.deletedNotificationIds);
-    if (remote.deletedUserIds) setDeletedUserIds(remote.deletedUserIds);
-    if (remote.dailyLimits) setDailyLimits(remote.dailyLimits);
-    if (remote.exceedances) setExceedances(remote.exceedances);
-    if (remote.notifications) setNotifications(remote.notifications);
-  };
-
+  // Initial Load from Cloud DB
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const remote = await fetchSharedState();
       if (cancelled) return;
       if (remote && ((remote.readings && remote.readings.length > 0) || (remote.version || 0) > 0 || remote.users?.length)) {
-        applySharedState(remote);
+        lastSeenVersionRef.current = remote.version || 0;
+        if (remote.readings?.length) setReadings(remote.readings);
+        if (remote.meters?.length) setMeters(remote.meters);
         setLastSyncedAt(new Date());
         setSyncStatus('cloud');
       }
@@ -593,24 +523,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!syncReady) return;
-    const timer = window.setInterval(async () => {
-      const remote = await fetchSharedState();
-      if (!remote) return;
-
-      const isNewVersion = (remote.version || 0) !== lastSeenVersionRef.current;
-      const isNewReadings = (remote.readings?.length || 0) !== readings.length;
-
-      if (isNewVersion || isNewReadings) {
-        applySharedState(remote);
-        setLastSyncedAt(new Date());
-      }
-    }, 2000);
-
-    return () => window.clearInterval(timer);
-  }, [syncReady, readings.length]);
 
   const isAdmin = currentUser.role === 'admin';
   const isBlockIncharge = currentUser.role === 'block_incharge';
@@ -649,8 +561,8 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentUser(data.user);
     setIsAuthenticated(true);
     const remote = await fetchSharedState();
-    if (remote) {
-      applySharedState(remote);
+    if (remote?.readings?.length) {
+      setReadings(remote.readings);
       setLastSyncedAt(new Date());
     }
     return true;
@@ -662,7 +574,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentUser(INITIAL_USERS.find((user) => user.role === 'viewer') || INITIAL_USERS[0]);
   };
 
-  // १. इनचार्जला फक्त त्याचाच ब्लॉक दिसणे (A, B, C, D कडक आयसोलेशन)
   const visibleBlocks = useMemo(() => {
     if (isAdmin || isViewer) return blocks;
 
@@ -695,7 +606,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return meters.filter((m) => allowedBlockLetters.has(normalizeBlockStr(m.blockId)));
   }, [meters, visibleBlocks, isAdmin, isViewer]);
 
-  // २. अचूक रीडिंग्ज सिंक: B, C, D च्या सर्व नोंदी डॅशबोर्ड व सर्व पेजवर तात्काळ दाखवणे
   const visibleReadings = useMemo(() => {
     let list = readings;
     if (!isAdmin && !isViewer) {
@@ -837,68 +747,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     )));
   };
 
-  useEffect(() => {
-    const unitsByBlockDay = new Map<string, number>();
-    readings.forEach((reading) => {
-      const key = `${reading.blockId}:${reading.readingDate}`;
-      unitsByBlockDay.set(key, (unitsByBlockDay.get(key) || 0) + reading.unitsConsumed);
-    });
-
-    const generated: DailyExceedance[] = [];
-    const generatedNotifications: EnergyNotification[] = [];
-    unitsByBlockDay.forEach((consumedUnits, key) => {
-      const [blockId, readingDate] = key.split(':');
-      const limit = dailyLimits.find((item) => item.blockId === blockId && item.effectiveFrom <= readingDate);
-      if (!limit || consumedUnits <= limit.dailyLimitUnits) return;
-      const eventFingerprint = readings
-        .filter((reading) => reading.blockId === blockId && reading.readingDate === readingDate)
-        .map((reading) => reading.id)
-        .sort()
-        .join('-');
-      const id = `exceedance-${blockId}-${readingDate}-${eventFingerprint}`;
-      const existing = exceedances.find((item) => item.id === id);
-      generated.push(existing ? {
-        ...existing,
-        consumedUnits,
-        dailyLimitUnits: limit.dailyLimitUnits,
-        excessUnits: consumedUnits - limit.dailyLimitUnits,
-      } : {
-        id,
-        blockId,
-        readingDate,
-        consumedUnits,
-        dailyLimitUnits: limit.dailyLimitUnits,
-        excessUnits: consumedUnits - limit.dailyLimitUnits,
-        status: 'open',
-        createdAt: new Date().toISOString(),
-      });
-      if (!notifications.some((item) => item.exceedanceId === id) && !deletedNotificationIds.includes(`notification-${id}`)) {
-        generatedNotifications.push({
-          id: `notification-${id}`,
-          userId: blocks.find((block) => block.id === blockId)?.inchargeId,
-          type: 'daily_limit_exceeded',
-          exceedanceId: id,
-          blockId,
-          readingDate,
-          title: 'Daily energy limit exceeded',
-          message: `${consumedUnits.toLocaleString()} units consumed against a ${limit.dailyLimitUnits.toLocaleString()} unit limit.`,
-          createdAt: new Date().toISOString(),
-          readByUserIds: [],
-        });
-      }
-    });
-
-    const generatedById = new Map(generated.map((item) => [item.id, item]));
-    const unchanged = exceedances.filter((item) => generatedById.has(item.id));
-    if (generated.length !== unchanged.length || generated.some((item) => {
-      const old = exceedances.find((candidate) => candidate.id === item.id);
-      return old && (old.consumedUnits !== item.consumedUnits || old.dailyLimitUnits !== item.dailyLimitUnits);
-    })) {
-      setExceedances((prev) => prev.map((item) => generatedById.get(item.id) || item).concat(generated.filter((item) => !prev.some((old) => old.id === item.id))));
-    }
-    if (generatedNotifications.length) setNotifications((prev) => [...generatedNotifications, ...prev]);
-  }, [readings, dailyLimits, deletedNotificationIds]);
-
   const addUser = (userData: Omit<User, 'id'> & { id?: string; password?: string }) => {
     if (currentUser.role !== 'admin') return;
     const cleanId = userData.id?.trim() || `usr-${Date.now().toString(36)}`;
@@ -928,7 +776,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (updates.role === 'admin') return;
 
     const updatedUsers = users.map((u) => (u.id === id ? { ...u, ...updates, id: targetId } : u));
-
     const updatedBlocks = blocks.map((b) =>
       b.inchargeId === id || b.inchargeId === targetId
         ? { ...b, inchargeId: targetId, inchargeName: updates.name || b.inchargeName }
@@ -1056,7 +903,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return true;
   };
 
-  // Add Meter Reading
+  // Add Meter Reading - तात्काळ आणि १००% सुरक्षित सेव्हिंग
   const addReading = async ({
     blockId,
     meterId,
@@ -1154,7 +1001,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       createdAt: new Date().toISOString(),
     };
 
-const updatedReadings = [newReading, ...readings];
+    const updatedReadings = [newReading, ...readings];
     const updatedMeters = meters.map((m) =>
       m.id === meterId
         ? {
@@ -1166,7 +1013,7 @@ const updatedReadings = [newReading, ...readings];
         : m
     );
 
-    // १. दोन्ही LocalStorage की सेव्ह करा (कधीही डेटा पुसला जाणार नाही)
+    // १. लोकल स्टोरेज आणि स्टेट तात्काळ सेव्ह करणे
     try {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
       localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
@@ -1176,11 +1023,10 @@ const updatedReadings = [newReading, ...readings];
       console.error('LocalStorage persist error:', lsErr);
     }
 
-    // २. स्क्रीनवर लगेच व्हॅल्यू अपडेट करा
     setReadings(updatedReadings);
     setMeters(updatedMeters);
 
-    // ३. आधी थेट सर्व्हरला सेव्ह होईपर्यंत 'await' करा (जेणेकरून २ सेकंदांचा पोलर जुना डेटा आणणार नाही)
+    // २. सर्व्हरवर सेव्ह करणे (await करून)
     try {
       const saved = await saveSharedState({
         readings: updatedReadings,
@@ -1191,7 +1037,7 @@ const updatedReadings = [newReading, ...readings];
         setLastSyncedAt(new Date());
       }
     } catch (syncErr) {
-      console.warn('Neon sync deferred, local state active:', syncErr);
+      console.warn('Sync deferred, local state is active:', syncErr);
     }
 
     return {
@@ -1201,6 +1047,7 @@ const updatedReadings = [newReading, ...readings];
       newReading,
     };
   };
+
   const addBatchReadings = async (
     readingsList: Array<{
       blockId: string;
@@ -1279,13 +1126,20 @@ const updatedReadings = [newReading, ...readings];
       return update ? { ...m, multiplier: update.multiplier || m.multiplier, lastReadingDate: update.date, lastReadingValue: update.value } : m;
     });
 
+    try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
+      localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}meters`, JSON.stringify(updatedMeters));
+      localStorage.setItem('voltwise_meters', JSON.stringify(updatedMeters));
+    } catch (e) {}
+
+    setReadings(updatedReadings);
+    setMeters(updatedMeters);
+
     await saveSharedState({
       readings: updatedReadings,
       meters: updatedMeters,
     });
-
-    setReadings(updatedReadings);
-    setMeters(updatedMeters);
 
     return {
       success: true,
@@ -1386,7 +1240,6 @@ const updatedReadings = [newReading, ...readings];
     saveSharedState({ tariff: newTariff });
   };
 
-  // ३. Calculate Bill: सर्व ब्लॉक्ससाठी अचूक गणना (B Block / C Block साठी योग्य युनिट्स व बिल येणे)
   const calculateBill = ({
     blockId,
     periodType,

@@ -35,8 +35,12 @@ export async function saveSharedState(
       body: JSON.stringify(payload),
     });
     if (!res.ok) return null;
-    return (await res.json()) as SharedCampusState;
-  } catch {
+    const data = await res.json();
+    if (!data || typeof data !== 'object') return null;
+    if (data.error) return null;
+    return data as SharedCampusState;
+  } catch (err) {
+    console.error('saveSharedState network error:', err);
     return null;
   }
 }
