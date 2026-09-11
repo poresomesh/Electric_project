@@ -904,7 +904,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   // Add Meter Reading - तात्काळ आणि १००% सुरक्षित सेव्हिंग
-  const addReading = async ({
+const addReading = async ({
     blockId,
     meterId,
     readingDate,
@@ -1013,31 +1013,31 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         : m
     );
 
-    // १. लोकल स्टोरेज आणि स्टेट तात्काळ सेव्ह करणे
+    // १. युझरच्या स्क्रीनवर आणि लोकल स्टोरेजमध्ये तात्काळ अपडेट करणे
     try {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
       localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}meters`, JSON.stringify(updatedMeters));
       localStorage.setItem('voltwise_meters', JSON.stringify(updatedMeters));
-    } catch (lsErr) {
-      console.error('LocalStorage persist error:', lsErr);
-    }
+    } catch (e) {}
 
     setReadings(updatedReadings);
     setMeters(updatedMeters);
 
-    // २. सर्व्हरवर सेव्ह करणे (await करून)
+    // २. डेटाबेस / सर्व्हरवर (Neon DB) डेटा सक्तीने सेव्ह करणे (महत्त्वाचे: यामुळे मोबाईलवर किंवा रिफ्रेश केल्यावर 0 होणार नाही)
     try {
       const saved = await saveSharedState({
         readings: updatedReadings,
         meters: updatedMeters,
       });
-      if (saved?.version) {
+      if (saved && saved.version) {
         lastSeenVersionRef.current = saved.version;
         setLastSyncedAt(new Date());
+      } else {
+        console.warn('Server sync response was empty, but local state is saved.');
       }
     } catch (syncErr) {
-      console.warn('Sync deferred, local state is active:', syncErr);
+      console.error('Failed to sync reading to server database:', syncErr);
     }
 
     return {
