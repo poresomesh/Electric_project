@@ -12,12 +12,11 @@ export async function fetchSharedState(): Promise<SharedCampusState | null> {
   try {
     const res = await fetch(stateUrl(), { 
       cache: 'no-store',
-      credentials: 'include', // महत्त्वाचे: सेशन कुकी पाठवण्यासाठी
+      credentials: 'include',
     });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || typeof data !== 'object') return null;
-    if (data.error) return null;
     return data as SharedCampusState;
   } catch {
     return null;
@@ -31,16 +30,17 @@ export async function saveSharedState(
     const res = await fetch(stateUrl(), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // महत्त्वाचे: सेव्ह करताना 401 एरर न येण्यासाठी
+      credentials: 'include',
       body: JSON.stringify(payload),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || typeof data !== 'object') return null;
-    if (data.error) return null;
+    
+    // जरी सर्व्हरने नॉन-200 किंवा वेगळा रिस्पॉन्स दिला तरी पेलोड सुरक्षित ठेवण्यासाठी
+    const text = await res.text();
+    if (!text) return null;
+    const data = JSON.parse(text);
     return data as SharedCampusState;
   } catch (err) {
-    console.error('saveSharedState network error:', err);
+    console.error('saveSharedState error:', err);
     return null;
   }
 }
@@ -49,7 +49,6 @@ export function overlaySharedState(
   local: SharedCampusState,
   remote: SharedCampusState
 ): SharedCampusState {
-  // जर सर्व्हरवर व्हर्जन किंवा डेटा असेल, तर क्लाउड डेटालाच थेट प्राधान्य द्या (मिश्रण करू नका)
   if (remote && (remote.version || 0) > 0) {
     return remote;
   }
