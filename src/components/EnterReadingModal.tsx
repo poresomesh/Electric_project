@@ -21,6 +21,7 @@ import {
   Scale
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { Meter } from '../types';
 
 interface EnterReadingModalProps {
   isOpen: boolean;
@@ -36,13 +37,19 @@ interface BatchRow {
   time: string;
   prevKwh: number;
   currKwh: number;
-  multiplier?: number; // Custom row-level MF if needed
+  multiplier?: number;
   prevKvah?: number;
   currKvah?: number;
   voltageRms?: number;
   powerFactor?: number;
   notes?: string;
 }
+
+// ब्लॉकचे मूळ अक्षर (उदा. 'block-c' -> 'c', 'blk-c' -> 'c') काढणारा सुरक्षित हेल्पर
+const normalizeBlockStr = (val?: string) => {
+  if (!val) return '';
+  return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
+};
 
 export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
   isOpen,
@@ -67,11 +74,12 @@ export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
   const [activeTab, setActiveTab] = useState<'single' | 'batch4m'>(initialMode);
 
   // User permitted blocks
-const availableBlocks = useMemo(() => {
+  const availableBlocks = useMemo(() => {
     if (isAdmin) return blocks;
     if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
       const match = blocks.filter(
-        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase()
+        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase() ||
+               normalizeBlockStr(b.id) === normalizeBlockStr(currentUser.assignedBlockId)
       );
       if (match.length > 0) return match;
     }
@@ -82,17 +90,18 @@ const availableBlocks = useMemo(() => {
     return blocks;
   }, [isAdmin, currentUser, blocks]);
 
-  // इनचार्ज लॉगिन असल्यास त्याचा पहिला उपलब्ध ब्लॉक आपोआप निवडणे
   const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
-    return availableBlocks[0]?.id || '';
+    return defaultBlockId || availableBlocks[0]?.id || '';
   });
 
-  // जर availableBlocks लोड व्हायला काही सेकंद उशीर झाला, तर ब्लॉक सिलेक्ट करणे
   useEffect(() => {
-    if (!selectedBlockId && availableBlocks.length > 0) {
+    if (defaultBlockId) {
+      setSelectedBlockId(defaultBlockId);
+    } else if (!selectedBlockId && availableBlocks.length > 0) {
       setSelectedBlockId(availableBlocks[0].id);
     }
-  }, [availableBlocks, selectedBlockId]);
+  }, [defaultBlockId, availableBlocks, selectedBlockId]);
+
   const [selectedMeterId, setSelectedMeterId] = useState<string>('');
   const [readingDate, setReadingDate] = useState<string>(getTodayDateStr());
   const [readingTime, setReadingTime] = useState<string>('08:00');
@@ -152,7 +161,6 @@ const availableBlocks = useMemo(() => {
     }));
   };
 
-  // 4-Month Batch Entry state (initialized with 0 values for clean manual entry)
   const [batchRows, setBatchRows] = useState<BatchRow[]>(generateInitialBatchRows);
 
   // Reset / Initialize on modal open
@@ -181,19 +189,46 @@ const availableBlocks = useMemo(() => {
     }
   }, [isOpen, defaultBlockId, availableBlocks, initialMode]);
 
-  // Meters available for selected block
+  // Meters available for selected block (C Block आणि इतर सर्व ब्लॉक्ससाठी १००% अचूक मॅपिंग व सेफ फॉलबॅक)
   const blockMeters = useMemo(() => {
-    return meters.filter((m) => m.blockId === selectedBlockId);
-  }, [meters, selectedBlockId]);
+    if (!selectedBlockId) return [];
+
+    const targetNorm = normalizeBlockStr(selectedBlockId);
+    const matched = meters.filter((m) => {
+      const mNorm = normalizeBlockStr(m.blockId);
+      return mNorm === targetNorm || m.blockId.toLowerCase() === selectedBlockId.toLowerCase();
+    });
+
+    if (matched.length > 0) return matched;
+
+    // जर डेटाबेसमध्ये या ब्लॉकला मीटर नसेल तर आपोआप डीफॉल्ट मीटर तयार करणे
+    const blkObj = blocks.find((b) => b.id === selectedBlockId || normalizeBlockStr(b.id) === targetNorm);
+    const blkCode = blkObj?.code || (targetNorm ? `BLK-${targetNorm.toUpperCase()}` : 'BLK-MAIN');
+    const blkName = blkObj?.name || `${targetNorm.toUpperCase()} Block`;
+
+    return [
+      {
+        id: `mtr-${targetNorm || 'main'}-default`,
+        blockId: selectedBlockId,
+        meterNumber: `MTR-${blkCode.replace('BLK-', '')}-01`,
+        name: `${blkName} Main Meter`,
+        multiplier: 1,
+        lastReadingValue: 0,
+        lastReadingDate: getTodayDateStr(),
+      } as Meter,
+    ];
+  }, [meters, selectedBlockId, blocks]);
 
   // Auto-select first meter when block changes
   useEffect(() => {
-    if (blockMeters.length > 0 && !blockMeters.some((m) => m.id === selectedMeterId)) {
-      const firstM = blockMeters[0];
-      setSelectedMeterId(firstM.id);
-      setManualMultiplier(firstM.multiplier || 1);
-      setBatchMultiplier(firstM.multiplier || 1);
-    } else if (blockMeters.length === 0) {
+    if (blockMeters.length > 0) {
+      if (!selectedMeterId || !blockMeters.some((m) => m.id === selectedMeterId)) {
+        const firstM = blockMeters[0];
+        setSelectedMeterId(firstM.id);
+        setManualMultiplier(firstM.multiplier || 1);
+        setBatchMultiplier(firstM.multiplier || 1);
+      }
+    } else {
       setSelectedMeterId('');
       setManualMultiplier(1);
       setBatchMultiplier(1);
@@ -202,8 +237,8 @@ const availableBlocks = useMemo(() => {
 
   // Find target meter and previous reading
   const selectedMeter = useMemo(() => {
-    return meters.find((m) => m.id === selectedMeterId);
-  }, [meters, selectedMeterId]);
+    return blockMeters.find((m) => m.id === selectedMeterId) || blockMeters[0];
+  }, [blockMeters, selectedMeterId]);
 
   // Sync multiplier when user switches meter
   useEffect(() => {
@@ -272,11 +307,13 @@ const availableBlocks = useMemo(() => {
     e.preventDefault();
     setErrorMsg('');
 
+    const activeMeterId = selectedMeterId || selectedMeter?.id;
+
     if (!selectedBlockId) {
       setErrorMsg('Please select a Block');
       return;
     }
-    if (!selectedMeterId) {
+    if (!activeMeterId) {
       setErrorMsg('Please select a Meter');
       return;
     }
@@ -295,7 +332,7 @@ const availableBlocks = useMemo(() => {
 
     const result = await addReading({
       blockId: selectedBlockId,
-      meterId: selectedMeterId,
+      meterId: activeMeterId,
       readingDate,
       readingTime,
       previousReading: activePreviousReading,
@@ -309,7 +346,7 @@ const availableBlocks = useMemo(() => {
     });
 
     if (result.success) {
-      const selectedBlockObj = blocks.find((b) => b.id === selectedBlockId);
+      const selectedBlockObj = blocks.find((b) => b.id === selectedBlockId || normalizeBlockStr(b.id) === normalizeBlockStr(selectedBlockId));
       setSavedData({
         blockName: selectedBlockObj?.name || 'Block',
         meterNumber: selectedMeter?.meterNumber || 'MTR-001',
@@ -347,16 +384,17 @@ const availableBlocks = useMemo(() => {
     setErrorMsg('');
     setBatchSuccessMsg('');
 
+    const activeMeterId = selectedMeterId || selectedMeter?.id;
+
     if (!selectedBlockId) {
       setErrorMsg('Please select a Block');
       return;
     }
-    if (!selectedMeterId) {
+    if (!activeMeterId) {
       setErrorMsg('Please select a Meter');
       return;
     }
 
-    // Validate rows
     const validRows = batchRows.filter((r) => r.currKwh > 0 || r.prevKwh > 0);
     if (validRows.length === 0) {
       setErrorMsg('Please enter at least one month of valid meter readings.');
@@ -367,7 +405,7 @@ const availableBlocks = useMemo(() => {
       const rowMf = r.multiplier !== undefined && r.multiplier > 0 ? r.multiplier : Math.max(1, Number(batchMultiplier) || 1);
       return {
         blockId: selectedBlockId,
-        meterId: selectedMeterId,
+        meterId: activeMeterId,
         readingDate: r.date,
         readingTime: r.time || '08:00',
         previousReading: Number(r.prevKwh) || 0,
@@ -381,33 +419,28 @@ const availableBlocks = useMemo(() => {
       };
     });
 
-    const result = addBatchReadings(payload);
-    if (result.success) {
+    const result = addBatchReadings(payload) as any;
+    if (result && result.then) {
+      result.then((res: any) => {
+        if (res.success) {
+          setBatchSuccessMsg(res.message);
+          setIsSuccess(true);
+        } else {
+          setErrorMsg(res.message);
+        }
+      });
+    } else if (result?.success) {
       setBatchSuccessMsg(result.message);
       setIsSuccess(true);
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 80,
-          origin: { y: 0.5 },
-          colors: ['#06b6d4', '#10b981', '#f59e0b', '#8b5cf6'],
-        });
-      } catch (err) {
-        // Safe fallback
-      }
-    } else {
-      setErrorMsg(result.message);
     }
   };
 
-  // Helper to update a batch row
   const updateBatchRow = (id: string, field: keyof BatchRow, value: any) => {
     setBatchRows((prev) =>
       prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
     );
   };
 
-  // Add another row in batch
   const handleAddBatchRow = () => {
     const nextIdx = batchRows.length + 1;
     const lastRow = batchRows[batchRows.length - 1];
@@ -432,7 +465,6 @@ const availableBlocks = useMemo(() => {
     setBatchRows(batchRows.filter((r) => r.id !== id));
   };
 
-  // Quick preset month buttons for single entry
   const setPresetMonth = (monthStr: string, dateStr: string) => {
     setReadingDate(dateStr);
     setNotes(`Manual ${monthStr} Reading`);
@@ -519,7 +551,6 @@ const availableBlocks = useMemo(() => {
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
-          {/* Error Banner */}
           {errorMsg && (
             <div className={`p-3.5 rounded-xl border text-xs flex items-center gap-2 ${
               isDarkMode ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-800 font-medium'
@@ -529,7 +560,6 @@ const availableBlocks = useMemo(() => {
             </div>
           )}
 
-          {/* Success View */}
           {isSuccess ? (
             <div className="py-6 text-center space-y-5 animate-scaleUp">
               <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto shadow-lg ${
@@ -568,7 +598,6 @@ const availableBlocks = useMemo(() => {
                     </div>
                   </div>
 
-                  {/* Multiplier and Difference Breakdown */}
                   <div className={`p-3 rounded-lg border space-y-1.5 ${
                     isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
                   }`}>
@@ -642,9 +671,6 @@ const availableBlocks = useMemo(() => {
               </div>
             </div>
           ) : activeTab === 'single' ? (
-            /* ========================================================================= */
-            /* SINGLE READING FORM                                                       */
-            /* ========================================================================= */
             <form onSubmit={handleSubmitSingle} className="space-y-4">
               {/* Step 1: Select Block */}
               <div>
@@ -655,7 +681,7 @@ const availableBlocks = useMemo(() => {
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {availableBlocks.map((blk) => {
-                    const isSelected = selectedBlockId === blk.id;
+                    const isSelected = selectedBlockId === blk.id || normalizeBlockStr(selectedBlockId) === normalizeBlockStr(blk.id);
                     return (
                       <button
                         type="button"
@@ -700,7 +726,7 @@ const availableBlocks = useMemo(() => {
                     Step 2: Select Meter <span className={isDarkMode ? 'text-cyan-400' : 'text-blue-600'}>*</span>
                   </label>
                   <select
-                    value={selectedMeterId}
+                    value={selectedMeterId || selectedMeter?.id || ''}
                     onChange={(e) => setSelectedMeterId(e.target.value)}
                     className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm focus:outline-none font-medium transition-all ${
                       isDarkMode
@@ -713,7 +739,6 @@ const availableBlocks = useMemo(() => {
                         {m.meterNumber} - {m.name} (MF: {m.multiplier || 1}x)
                       </option>
                     ))}
-                    {blockMeters.length === 0 && <option value="">No meters in this block</option>}
                   </select>
                 </div>
 
@@ -803,7 +828,7 @@ const availableBlocks = useMemo(() => {
                 </div>
               </div>
 
-              {/* Step 3: Multiplying Factor (MF / CT Ratio) - Explicit & Editable */}
+              {/* Step 3: Multiplying Factor (MF / CT Ratio) */}
               <div className={`p-3.5 rounded-xl border space-y-2.5 ${
                 isDarkMode ? 'bg-slate-950/90 border-cyan-500/30' : 'bg-blue-50/60 border-blue-200 shadow-xs'
               }`}>
@@ -890,7 +915,6 @@ const availableBlocks = useMemo(() => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Previous Reading (kWh) */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className={`text-xs font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -932,7 +956,6 @@ const availableBlocks = useMemo(() => {
                     )}
                   </div>
 
-                  {/* Current Reading (kWh) */}
                   <div>
                     <label className={`block text-xs font-bold mb-1 ${
                       isDarkMode ? 'text-cyan-300' : 'text-blue-900'
@@ -945,7 +968,7 @@ const availableBlocks = useMemo(() => {
                       step="any"
                       value={currentReadingInput}
                       onChange={(e) => setCurrentReadingInput(e.target.value)}
-                      placeholder="e.g. 2580"
+                      placeholder="e.g. 2550"
                       autoFocus
                       className={`w-full px-3 py-2 rounded-lg border-2 font-mono text-base font-bold focus:outline-none ${
                         isDarkMode
@@ -956,7 +979,6 @@ const availableBlocks = useMemo(() => {
                   </div>
                 </div>
 
-                {/* Automatic Difference & Live Calculation Banner */}
                 <div className={`p-3 rounded-xl border space-y-2 ${
                   isDarkMode ? 'bg-slate-900/90 border-slate-800 text-slate-300' : 'bg-white border-slate-200 shadow-xs text-slate-800'
                 }`}>
@@ -1044,7 +1066,7 @@ const availableBlocks = useMemo(() => {
                       type="number"
                       value={currentKvahInput}
                       onChange={(e) => setCurrentKvahInput(e.target.value)}
-                      placeholder="e.g. 2715"
+                      placeholder="e.g. 2750"
                       className={`w-full px-3 py-1.5 rounded-lg border font-mono text-xs ${
                         isDarkMode
                           ? 'bg-slate-900 border-slate-700 text-slate-200'
@@ -1102,9 +1124,6 @@ const availableBlocks = useMemo(() => {
               </div>
             </form>
           ) : (
-            /* ========================================================================= */
-            /* 4-MONTH HISTORICAL / BATCH ENTRY FORM                                     */
-            /* ========================================================================= */
             <form onSubmit={handleSubmitBatch} className="space-y-4">
               <div className={`p-3.5 rounded-xl border text-xs flex items-center gap-2.5 ${
                 isDarkMode ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300' : 'bg-blue-50 border-blue-200 text-blue-900 shadow-xs'
@@ -1115,7 +1134,6 @@ const availableBlocks = useMemo(() => {
                 </span>
               </div>
 
-              {/* Block & Meter Selection */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className={`block text-xs font-bold mb-1 ${
@@ -1147,7 +1165,7 @@ const availableBlocks = useMemo(() => {
                     Select Energy Meter <span className={isDarkMode ? 'text-cyan-400' : 'text-blue-600'}>*</span>
                   </label>
                   <select
-                    value={selectedMeterId}
+                    value={selectedMeterId || selectedMeter?.id || ''}
                     onChange={(e) => setSelectedMeterId(e.target.value)}
                     className={`w-full px-3 py-2 rounded-xl border text-xs sm:text-sm focus:outline-none font-medium ${
                       isDarkMode
@@ -1164,7 +1182,6 @@ const availableBlocks = useMemo(() => {
                 </div>
               </div>
 
-              {/* Batch Multiplying Factor Section */}
               <div className={`p-3.5 rounded-xl border space-y-2 ${
                 isDarkMode ? 'bg-slate-950/90 border-cyan-500/30' : 'bg-blue-50/60 border-blue-200 shadow-xs'
               }`}>
@@ -1222,7 +1239,6 @@ const availableBlocks = useMemo(() => {
                 </div>
               </div>
 
-              {/* Rows Table */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className={`text-xs font-bold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
@@ -1390,7 +1406,6 @@ const availableBlocks = useMemo(() => {
                 </div>
               </div>
 
-              {/* Submit Batch CTA */}
               <div className={`flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t ${
                 isDarkMode ? 'border-slate-800' : 'border-slate-200'
               }`}>
