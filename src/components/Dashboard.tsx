@@ -57,15 +57,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
   } = useEnergy();
 
   // इनचार्जचा असाइन केलेला ब्लॉक सुरक्षित शोधणे
+// इनचार्जचा ब्लॉक अचूक शोधणे (सर्व प्रकारे सुरक्षित मॅपिंग)
   const assignedBlock = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock) return userAssignedBlock;
+
+    // १. युझरच्या assignedBlockId वरून शोधणे (id किंवा code मॅच करणे)
     if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      const found = blocks.find((b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase());
+      const found = blocks.find((b) => 
+        b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase() ||
+        b.code.toLowerCase() === currentUser.assignedBlockId?.toLowerCase()
+      );
       if (found) return found;
     }
-    const byInchargeId = blocks.find((b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase());
-    return byInchargeId || null;
+
+    // २. ब्लॉकच्या inchargeId वरून युझरचा id किंवा username मॅच करणे
+    const byInchargeId = blocks.find((b) => 
+      (b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase()) ||
+      (b.inchargeId && b.inchargeId.toLowerCase() === currentUser.username.toLowerCase())
+    );
+    if (byInchargeId) return byInchargeId;
+
+    // ३. युझरनेमवरून ब्लॉक ओळखणे (उदा. incharge_a असेल तर A Block)
+    const uname = currentUser.username?.toLowerCase() || '';
+    if (uname.includes('_a') || uname.includes('-a')) {
+      const bA = blocks.find((b) => b.id.toLowerCase().includes('a') || b.code.toLowerCase().includes('a'));
+      if (bA) return bA;
+    }
+
+    // ४. इनचार्ज रोल असेल आणि काहीही मॅच झाले नाही तर पहिला ब्लॉक (A Block) सक्तीने देणे
+    return blocks.length > 0 ? blocks[0] : null;
   }, [isAdmin, userAssignedBlock, currentUser, blocks]);
 
   // Active block filter
@@ -109,7 +130,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const filteredReadings = useMemo(() => {
     return readings.filter((r) => {
       // Block filter
-      if (activeBlockId !== 'ALL' && r.blockId.toLowerCase() !== activeBlockId.toLowerCase()) return false;
+     if (activeBlockId !== 'ALL') {
+        const matchId = r.blockId.toLowerCase();
+        const targetId = activeBlockId.toLowerCase();
+        const targetCode = assignedBlock ? assignedBlock.code.toLowerCase() : '';
+        if (matchId !== targetId && matchId !== targetCode) return false;
+      }
       
       // Date / Month filter
       if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
