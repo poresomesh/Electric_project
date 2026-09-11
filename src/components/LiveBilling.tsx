@@ -34,17 +34,51 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     isDarkMode,
   } = useEnergy();
 
-  // युझर इनचार्ज असल्यास त्याचा खात्रीशीर ब्लॉक आयडी काढणे
+  // ब्लॉकचे अक्षर शोधणारे नॉर्मलायझर (उदा. 'block-c' -> 'c', 'blk-d' -> 'd')
+  const normalizeBlock = (val?: string) => {
+    if (!val) return '';
+    return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
+  };
+
+  // युझर इनचार्ज असल्यास त्याचा खात्रीशीर ब्लॉक आयडी काढणे (A, B, C, D कडक आयसोलेशन)
   const inchargeBlockId = useMemo(() => {
     if (isAdmin) return null;
-    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      return currentUser.assignedBlockId;
+    if (userAssignedBlock?.id) return userAssignedBlock.id;
+
+    const uBlockId = (currentUser?.assignedBlockId || '').trim().toLowerCase();
+    const uname = (currentUser?.username || '').trim().toLowerCase();
+    const uid = (currentUser?.id || '').trim().toLowerCase();
+
+    // incharge_c -> 'c', incharge_b -> 'b' शोधणे
+    let targetLetter = '';
+    const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
+    if (match) {
+      targetLetter = match[1].toLowerCase();
+    } else if (uBlockId && uBlockId !== 'all') {
+      targetLetter = normalizeBlock(uBlockId);
     }
-    if (userAssignedBlock?.id) {
-      return userAssignedBlock.id;
+
+    if (blocks && blocks.length > 0) {
+      const found = blocks.find((b) => {
+        const bId = (b.id || '').toLowerCase();
+        const bCode = (b.code || '').toLowerCase();
+        return (
+          bId === uBlockId ||
+          bCode === uBlockId ||
+          (targetLetter && (normalizeBlock(bId) === targetLetter || normalizeBlock(bCode) === targetLetter))
+        );
+      });
+      if (found) return found.id;
+
+      const byIncharge = blocks.find((b) => 
+        (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
+        (b.inchargeId && b.inchargeId.toLowerCase() === uname)
+      );
+      if (byIncharge) return byIncharge.id;
     }
-    const matched = blocks.find((b) => b.inchargeId === currentUser.id);
-    return matched ? matched.id : null;
+
+    if (targetLetter) return `block-${targetLetter}`;
+    return null;
   }, [isAdmin, currentUser, userAssignedBlock, blocks]);
 
   // Selected scope & timeframe
@@ -52,7 +86,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     if (!isAdmin && inchargeBlockId) {
       return inchargeBlockId;
     }
-    return initialBlockId || (isAdmin ? 'ALL' : blocks[0]?.id || 'block-a');
+    return initialBlockId || (isAdmin ? 'ALL' : 'block-a');
   });
 
   // जर इनचार्ज युझर स्टेट नंतर लोड झाली तर ब्लॉक आपोआप सेट करणे
@@ -118,7 +152,11 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     });
   }, [effectiveBlockId, periodType, referenceDate, calculateBill]);
 
-  const activeBlockObj = blocks.find((b) => b.id.toLowerCase() === effectiveBlockId?.toLowerCase());
+  const activeBlockObj = blocks.find((b) => 
+    b.id.toLowerCase() === effectiveBlockId?.toLowerCase() ||
+    normalizeBlock(b.id) === normalizeBlock(effectiveBlockId) ||
+    normalizeBlock(b.code) === normalizeBlock(effectiveBlockId)
+  );
 
   // Generates standalone, pixel-perfect A4 printable HTML document without Billing Cycle
   const generateInvoiceHtml = () => {
@@ -332,27 +370,35 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
 
         {/* Period & Block Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Block Selector: फक्त ॲडमिनला 'All Blocks Combined' दिसेल, इनचार्जला फक्त त्याचा ब्लॉक दिसेल */}
-          <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
-            <span className="text-xs font-semibold text-slate-400 px-2">Block:</span>
-            <select
-              id="select-bill-block"
-              value={effectiveBlockId}
-              disabled={!isAdmin}
-              onChange={(e) => {
-                setSelectedBlockId(e.target.value);
-                setVoucherNo(`INV-${selectedYear}-${selectedMonthStr.slice(5, 7)}-${e.target.value.slice(0, 4).toUpperCase()}`);
-              }}
-              className="bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500 disabled:opacity-80 disabled:cursor-not-allowed"
-            >
-              {isAdmin && <option value="ALL">All Blocks Combined</option>}
-              {(isAdmin ? blocks : (activeBlockObj ? [activeBlockObj] : blocks)).map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} ({b.code})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Block Selector: फक्त ॲडमिनला ड्रॉपडाउन दाखवणे, इनचार्जसाठी ब्लॉक आपोआप लॉक राहील */}
+          {isAdmin ? (
+            <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
+              <span className="text-xs font-semibold text-slate-400 px-2">Block:</span>
+              <select
+                id="select-bill-block"
+                value={effectiveBlockId}
+                onChange={(e) => {
+                  setSelectedBlockId(e.target.value);
+                  setVoucherNo(`INV-${selectedYear}-${selectedMonthStr.slice(5, 7)}-${e.target.value.slice(0, 4).toUpperCase()}`);
+                }}
+                className="bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="ALL">All Blocks Combined</option>
+                {blocks.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800">
+              <span className="text-xs font-semibold text-slate-400">Block:</span>
+              <span className="text-xs font-bold text-amber-400 font-mono">
+                {activeBlockObj ? `${activeBlockObj.name} (${activeBlockObj.code})` : 'Assigned Block'}
+              </span>
+            </div>
+          )}
 
           {/* Timeframe selector: Day / Week / Month / Year */}
           <div className="flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800">
@@ -805,7 +851,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleOpenInNewTab}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg shadow-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg shadow-sm cursor-pointer"
                   title="Open standalone A4 invoice in a new tab"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
@@ -813,7 +859,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
                 </button>
                 <button
                   onClick={handleDownloadInvoiceHtml}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg shadow-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg shadow-sm cursor-pointer"
                   title="Download HTML file"
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-400" />
@@ -821,14 +867,14 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
                 </button>
                 <button
                   onClick={handlePrint}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Print Document</span>
                 </button>
                 <button
                   onClick={() => setIsPrintModalOpen(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
