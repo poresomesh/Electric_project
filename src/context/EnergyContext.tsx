@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
-import { 
-  Block, 
-  Meter, 
-  MeterReading, 
-  TariffConfig, 
-  User, 
-  BillCalculation, 
-  UserRole, 
+import {
+  Block,
+  Meter,
+  MeterReading,
+  TariffConfig,
+  User,
+  BillCalculation,
+  UserRole,
   ThemeMode,
   MsebBlock,
   MsebReading,
@@ -46,7 +46,7 @@ interface EnergyContextType {
   markNotificationRead: (notificationId: string) => void;
   deleteNotification: (notificationId: string) => Promise<boolean>;
   markAllNotificationsRead: () => void;
-  
+
   // MSEB Separate Infrastructure & Billing
   msebBlocks: MsebBlock[];
   msebReadings: MsebReading[];
@@ -72,13 +72,13 @@ interface EnergyContextType {
   addMsebCustomCharge: (blockId: string, charge: Omit<MsebCustomCharge, 'id'>) => void;
   deleteMsebCustomCharge: (blockId: string, chargeId: string) => void;
   calculateMsebBillBreakdown: (blockId: string, units: number, demandKva?: number) => MsebCostBreakdown;
-  
+
   // Theme & Appearance
   theme: ThemeMode;
   isDarkMode: boolean;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
-  
+
   // Role & Permissions
   isAdmin: boolean;
   isBlockIncharge: boolean;
@@ -87,7 +87,7 @@ interface EnergyContextType {
   canEnterReading: (blockId?: string) => boolean;
   canManageUsers: boolean;
   canEditTariff: boolean;
-  
+
   // Auth actions
   login: (username: string, pass?: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -105,7 +105,7 @@ interface EnergyContextType {
       designation?: string;
     }
   ) => Promise<{ success: boolean; message: string }>;
-  
+
   // Reading actions
   addReading: (reading: {
     blockId: string;
@@ -139,7 +139,7 @@ interface EnergyContextType {
   }>) => Promise<{ success: boolean; count: number; totalUnits: number; message: string }>;
   deleteReading: (id: string) => boolean;
   deleteAllReadings: () => boolean;
-  
+
   // Meter & Block actions
   addMeter: (meter: Omit<Meter, 'id' | 'lastReadingDate' | 'lastReadingValue'> & { initialReading: number; initialDate: string }) => void;
   updateMeter: (id: string, updates: Partial<Meter>) => void;
@@ -148,7 +148,7 @@ interface EnergyContextType {
   updateBlock: (id: string, updates: Partial<Block>) => void;
   deleteBlock: (id: string) => boolean;
   updateTariff: (newTariff: TariffConfig) => void;
-  
+
   // Calculations & Analytics
   calculateBill: (params: { blockId?: string; periodType: 'day' | 'week' | 'month' | 'year'; referenceDate?: string }) => BillCalculation;
   getDayWiseData: (blockId?: string, date?: string) => Array<{ time: string; units: number; kw: number; label: string }>;
@@ -160,7 +160,7 @@ interface EnergyContextType {
     currentMonthVsPrevMonth: { diffAmount: number; diffPercent: number; isIncrease: boolean; currentBill: number; prevBill: number; currentLabel: string; prevLabel: string };
     currentMonthVsPrevYear: { diffAmount: number; diffPercent: number; isIncrease: boolean; currentBill: number; prevYearBill: number; currentLabel: string; prevYearLabel: string };
   };
-  
+
   // Utilities
   resetToDefaults: () => void;
   exportDatabaseJson: () => string;
@@ -588,7 +588,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, []);
 
-// 2. Realtime Multi-Device Poller (Syncs Mobile & Laptop Automatically)
+  // 2. Realtime Multi-Device Poller (Syncs Mobile & Laptop Automatically)
   useEffect(() => {
     if (!syncReady) return;
     const timer = window.setInterval(async () => {
@@ -655,8 +655,8 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentUser(INITIAL_USERS.find((user) => user.role === 'viewer') || INITIAL_USERS[0]);
   };
 
-// 1. फक्त लॉगिन असलेल्या ब्लॉक इनचार्जला त्याच्याच ब्लॉकचा डेटा दाखवा
-const visibleBlocks = useMemo(() => {
+  // 1. फक्त लॉगिन असलेल्या ब्लॉक इनचार्जला त्याच्याच ब्लॉकचा डेटा दाखवा
+  const visibleBlocks = useMemo(() => {
     if (isAdmin || isViewer) return blocks;
 
     // १. युझरच्या assignedBlockId वरून शोधणे (केस इन्सेन्सिटिव्ह)
@@ -735,18 +735,18 @@ const visibleBlocks = useMemo(() => {
       const existing = prev.find((limit) => limit.blockId === blockId);
       const updated = existing
         ? prev.map((limit) =>
-            limit.blockId === blockId
-              ? { ...limit, dailyLimitUnits, effectiveFrom: getTodayDateStr(), updatedAt: now, updatedBy: currentUser.id }
-              : limit
-          )
+          limit.blockId === blockId
+            ? { ...limit, dailyLimitUnits, effectiveFrom: getTodayDateStr(), updatedAt: now, updatedBy: currentUser.id }
+            : limit
+        )
         : [...prev, {
-            id: `limit-${blockId}`,
-            blockId,
-            dailyLimitUnits,
-            effectiveFrom: getTodayDateStr(),
-            updatedAt: now,
-            updatedBy: currentUser.id,
-          }];
+          id: `limit-${blockId}`,
+          blockId,
+          dailyLimitUnits,
+          effectiveFrom: getTodayDateStr(),
+          updatedAt: now,
+          updatedBy: currentUser.id,
+        }];
       saveSharedState({ dailyLimits: updated });
       return updated;
     });
@@ -894,7 +894,7 @@ const visibleBlocks = useMemo(() => {
     saveSharedState({ users: updatedUsers });
   };
 
-const updateUser = async (id: string, updates: Partial<User> & { newId?: string }) => {
+  const updateUser = async (id: string, updates: Partial<User> & { newId?: string }) => {
     if (currentUser.role !== 'admin') return;
     const targetId = updates.newId?.trim() || updates.id || id;
     const existing = users.find((user) => user.id === id);
@@ -903,9 +903,9 @@ const updateUser = async (id: string, updates: Partial<User> & { newId?: string 
       return;
     }
     if (updates.role === 'admin') return;
-    
+
     const updatedUsers = users.map((u) => (u.id === id ? { ...u, ...updates, id: targetId } : u));
-    
+
     const updatedBlocks = blocks.map((b) =>
       b.inchargeId === id || b.inchargeId === targetId
         ? { ...b, inchargeId: targetId, inchargeName: updates.name || b.inchargeName }
@@ -984,18 +984,18 @@ const updateUser = async (id: string, updates: Partial<User> & { newId?: string 
         ? { ...u, id: assignedId, username: cleanUsername, password: cleanPassword, name: assignedName, phone: assignedPhone, designation: assignedDesignation, assignedBlockId: blockId }
         : u)
       : [...users, {
-          id: assignedId,
-          username: cleanUsername,
-          password: cleanPassword,
-          passwordConfigured: true,
-          name: assignedName,
-          role: 'block_incharge' as const,
-          assignedBlockId: blockId,
-          email: `${cleanUsername.toLowerCase()}@company.com`,
-          phone: assignedPhone,
-          department: `${targetBlock.name} Operations`,
-          designation: assignedDesignation,
-        }];
+        id: assignedId,
+        username: cleanUsername,
+        password: cleanPassword,
+        passwordConfigured: true,
+        name: assignedName,
+        role: 'block_incharge' as const,
+        assignedBlockId: blockId,
+        email: `${cleanUsername.toLowerCase()}@company.com`,
+        phone: assignedPhone,
+        department: `${targetBlock.name} Operations`,
+        designation: assignedDesignation,
+      }];
     const nextBlocks = blocks.map((b) =>
       b.id === blockId ? { ...b, inchargeId: assignedId, inchargeName: assignedName } : b
     );
@@ -1133,7 +1133,7 @@ const updateUser = async (id: string, updates: Partial<User> & { newId?: string 
       createdAt: new Date().toISOString(),
     };
 
-    const updatedReadings = [newReading, ...readings];
+const updatedReadings = [newReading, ...readings];
     const updatedMeters = meters.map((m) =>
       m.id === meterId
         ? {
@@ -1145,19 +1145,32 @@ const updateUser = async (id: string, updates: Partial<User> & { newId?: string 
         : m
     );
 
-    // Save directly to Neon Database first
-    const saved = await saveSharedState({
-      readings: updatedReadings,
-      meters: updatedMeters,
-    });
-
-    if (saved?.version) {
-      lastSeenVersionRef.current = saved.version;
-      setLastSyncedAt(new Date());
+    // १. ब्राऊझरच्या LocalStorage मध्ये तात्काळ सेव्ह करणे (डेटा कधीही गहाळ होणार नाही)
+    try {
+      localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
+      localStorage.setItem('voltwise_meters', JSON.stringify(updatedMeters));
+    } catch (lsErr) {
+      console.error('LocalStorage persist error:', lsErr);
     }
 
+    // २. React State त्वरित अपडेट करणे (डॅशबोर्डवर लगेच दिसण्यासाठी)
     setReadings(updatedReadings);
     setMeters(updatedMeters);
+
+    // ३. Neon Database ला बॅकग्राउंडमध्ये सेव्ह करणे (एरर आला तरी युझरचा डेटा अडकणार नाही)
+    try {
+      saveSharedState({
+        readings: updatedReadings,
+        meters: updatedMeters,
+      }).then((saved) => {
+        if (saved?.version) {
+          lastSeenVersionRef.current = saved.version;
+          setLastSyncedAt(new Date());
+        }
+      }).catch((e) => console.warn('Neon sync deferred:', e));
+    } catch (syncErr) {
+      console.warn('Neon background sync failed, local backup preserved:', syncErr);
+    }
 
     return {
       success: true,
@@ -1352,7 +1365,7 @@ const updateUser = async (id: string, updates: Partial<User> & { newId?: string 
     saveSharedState({ tariff: newTariff });
   };
 
-const calculateBill = ({
+  const calculateBill = ({
     blockId,
     periodType,
     referenceDate = getTodayDateStr(),
@@ -1414,7 +1427,7 @@ const calculateBill = ({
     const totalUnits = filteredReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
     const unitsConsumed = totalUnits;
     const energyCharges = +(unitsConsumed * tariff.baseRatePerUnit).toFixed(2);
-    
+
     let fixedCharges = unitsConsumed > 0 ? tariff.fixedChargesMonthly : 0;
     if (periodType === 'day') fixedCharges = +(fixedCharges / 30).toFixed(2);
     else if (periodType === 'week') fixedCharges = +((fixedCharges * 7) / 30).toFixed(2);
@@ -1564,7 +1577,7 @@ const calculateBill = ({
     return monthsName.map((shortMonth, idx) => {
       const monthNum = String(idx + 1).padStart(2, '0');
       const targetPrefix = `${year}-${monthNum}`;
-      
+
       let monthReadings = visibleReadings.filter((r) => r.readingDate.startsWith(targetPrefix));
       if (effectiveBlockId && effectiveBlockId !== 'ALL') {
         monthReadings = monthReadings.filter((r) => r.blockId === effectiveBlockId);
@@ -1591,7 +1604,7 @@ const calculateBill = ({
     const monthlyList = past6Months.map(({ monthStr, label, shortLabel }) => {
       let monthReadings = visibleReadings.filter((r) => r.readingDate.startsWith(monthStr));
       const units = monthReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
-      
+
       const energyCharge = units * tariff.baseRatePerUnit;
       const bill = units > 0
         ? Math.round(energyCharge + tariff.fixedChargesMonthly + energyCharge * ((tariff.dutyTaxPercent + tariff.fuelSurchargePercent) / 100))
@@ -1859,12 +1872,12 @@ const calculateBill = ({
     const block = msebBlocks.find((b) => b.id === params.msebBlockId);
     const blockTariff = getMsebTariff(params.msebBlockId);
     const targetUnits = blockTariff.billingType === 'kvah' && unitsKvah !== undefined ? unitsKvah : unitsKwh;
-    
+
     const customRatePerUnit = (blockTariff.customCharges || [])
       .filter((c) => c.type === 'per_unit')
       .reduce((sum, c) => sum + c.value, 0);
 
-    const baseMarginalRate = (blockTariff.baseRatePerUnit + blockTariff.wheelingChargePerUnit + blockTariff.toseTaxPerUnit + customRatePerUnit) * 
+    const baseMarginalRate = (blockTariff.baseRatePerUnit + blockTariff.wheelingChargePerUnit + blockTariff.toseTaxPerUnit + customRatePerUnit) *
       (1 + (blockTariff.facPercent + blockTariff.electricityDutyPercent) / 100);
     const calculatedCost = Math.round(targetUnits * baseMarginalRate);
 
