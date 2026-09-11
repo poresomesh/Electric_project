@@ -1154,7 +1154,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       createdAt: new Date().toISOString(),
     };
 
-    const updatedReadings = [newReading, ...readings];
+const updatedReadings = [newReading, ...readings];
     const updatedMeters = meters.map((m) =>
       m.id === meterId
         ? {
@@ -1166,28 +1166,32 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         : m
     );
 
+    // १. दोन्ही LocalStorage की सेव्ह करा (कधीही डेटा पुसला जाणार नाही)
     try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
       localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}meters`, JSON.stringify(updatedMeters));
       localStorage.setItem('voltwise_meters', JSON.stringify(updatedMeters));
     } catch (lsErr) {
       console.error('LocalStorage persist error:', lsErr);
     }
 
+    // २. स्क्रीनवर लगेच व्हॅल्यू अपडेट करा
     setReadings(updatedReadings);
     setMeters(updatedMeters);
 
+    // ३. आधी थेट सर्व्हरला सेव्ह होईपर्यंत 'await' करा (जेणेकरून २ सेकंदांचा पोलर जुना डेटा आणणार नाही)
     try {
-      saveSharedState({
+      const saved = await saveSharedState({
         readings: updatedReadings,
         meters: updatedMeters,
-      }).then((saved) => {
-        if (saved?.version) {
-          lastSeenVersionRef.current = saved.version;
-          setLastSyncedAt(new Date());
-        }
-      }).catch((e) => console.warn('Neon sync deferred:', e));
+      });
+      if (saved?.version) {
+        lastSeenVersionRef.current = saved.version;
+        setLastSyncedAt(new Date());
+      }
     } catch (syncErr) {
-      console.warn('Neon background sync failed, local backup preserved:', syncErr);
+      console.warn('Neon sync deferred, local state active:', syncErr);
     }
 
     return {
@@ -1197,7 +1201,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       newReading,
     };
   };
-
   const addBatchReadings = async (
     readingsList: Array<{
       blockId: string;
