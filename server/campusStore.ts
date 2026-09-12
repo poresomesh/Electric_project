@@ -286,20 +286,21 @@ function validateUserChanges(current: SharedCampusState, incoming: Partial<Share
     }
   }
 
-  // ड्युप्लिकेट आयडी आणि युजरनेमचा कॉन्फ्लिक्ट दूर करण्यासाठी युझर्स व्यवस्थित मॅप करणे
-  const mergedUsersMap = new Map<string, any>();
-  for (const u of current.users) {
-    mergedUsersMap.set(u.id, u);
-  }
+  // युझर्स अपडेट करताना ड्युप्लिकेट युझरनेमचा गैरसमज दूर करण्यासाठी Map वापरणे
+  const userMap = new Map(current.users.map((u) => [u.id, u]));
   for (const u of incoming.users) {
-    mergedUsersMap.set(u.id, { ...(mergedUsersMap.get(u.id) || {}), ...u });
+    userMap.set(u.id, { ...(userMap.get(u.id) || {}), ...u });
   }
 
+  const ids = new Set<string>();
   const usernames = new Set<string>();
-  for (const candidate of mergedUsersMap.values()) {
+  for (const candidate of userMap.values()) {
     const username = (candidate.username || '').trim().toLowerCase();
-    if (username && usernames.has(username)) return 'User IDs and login IDs must be unique';
-    usernames.add(username);
+    if (ids.has(candidate.id) || (username && usernames.has(username))) {
+      return 'User IDs and login IDs must be unique';
+    }
+    ids.add(candidate.id);
+    if (username) usernames.add(username);
   }
   return null;
 }
