@@ -285,13 +285,20 @@ function validateUserChanges(current: SharedCampusState, incoming: Partial<Share
       return 'Only the protected administrator may have the admin role';
     }
   }
-  const merged = mergeSharedState(current, removeUserSecrets(incoming)).users;
-  const ids = new Set<string>();
+
+  // ड्युप्लिकेट आयडी आणि युजरनेमचा कॉन्फ्लिक्ट दूर करण्यासाठी युझर्स व्यवस्थित मॅप करणे
+  const mergedUsersMap = new Map<string, any>();
+  for (const u of current.users) {
+    mergedUsersMap.set(u.id, u);
+  }
+  for (const u of incoming.users) {
+    mergedUsersMap.set(u.id, { ...(mergedUsersMap.get(u.id) || {}), ...u });
+  }
+
   const usernames = new Set<string>();
-  for (const candidate of merged) {
-    const username = candidate.username.trim().toLowerCase();
-    if (ids.has(candidate.id) || usernames.has(username)) return 'User IDs and login IDs must be unique';
-    ids.add(candidate.id);
+  for (const candidate of mergedUsersMap.values()) {
+    const username = (candidate.username || '').trim().toLowerCase();
+    if (username && usernames.has(username)) return 'User IDs and login IDs must be unique';
     usernames.add(username);
   }
   return null;
