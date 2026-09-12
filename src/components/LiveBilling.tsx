@@ -34,64 +34,44 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     isDarkMode,
   } = useEnergy();
 
-  // ब्लॉकचे अक्षर शोधणारे नॉर्मलायझर (उदा. 'block-c' -> 'c', 'blk-d' -> 'd')
   const normalizeBlock = (val?: string) => {
     if (!val) return '';
     return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
   };
 
-  // इनचार्जचा ब्लॉक शोधणे (कडक आणि अचूक एरर-फ्री लॉजिक)
+  // अचूक आणि स्ट्रिक्ट इनचार्ज ब्लॉक आयडी (चुकीने A Block कडे डीफॉल्ट उडी मारणे बंद केले आहे)
   const inchargeBlockId = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock?.id) return userAssignedBlock.id;
 
     const uBlockId = (currentUser?.assignedBlockId || '').trim().toLowerCase();
-    const uname = (currentUser?.username || '').trim().toLowerCase();
     const uid = (currentUser?.id || '').trim().toLowerCase();
-
-    let targetLetter = '';
-    const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
-    if (match) {
-      targetLetter = match[1].toLowerCase();
-    } else if (uBlockId && uBlockId !== 'all') {
-      targetLetter = normalizeBlock(uBlockId);
-    }
 
     if (blocks && blocks.length > 0) {
       const found = blocks.find((b) => {
         const bId = (b.id || '').toLowerCase();
         const bCode = (b.code || '').toLowerCase();
-        const bName = (b.name || '').toLowerCase();
+        const bInchargeId = (b.inchargeId || '').toLowerCase();
         return (
           bId === uBlockId ||
           bCode === uBlockId ||
-          bName.includes(uBlockId) ||
-          normalizeBlock(bId) === normalizeBlock(uBlockId) ||
-          (targetLetter && (normalizeBlock(bId) === targetLetter || normalizeBlock(bCode) === targetLetter))
+          bInchargeId === uid
         );
       });
       if (found) return found.id;
-
-      const byIncharge = blocks.find((b) => 
-        (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
-        (b.inchargeId && b.inchargeId.toLowerCase() === uname)
-      );
-      if (byIncharge) return byIncharge.id;
     }
 
-    if (targetLetter) return `block-${targetLetter}`;
     return null;
   }, [isAdmin, currentUser, userAssignedBlock, blocks]);
 
-  // Selected scope & timeframe
+  // Selected scope & timeframe (इथे आधी block-a डीफॉल्ट होता, तो काढून आता सुरक्षित ब्लॉक सेट केला आहे)
   const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
     if (!isAdmin && inchargeBlockId) {
       return inchargeBlockId;
     }
-    return initialBlockId || (isAdmin ? 'ALL' : 'block-a');
+    return initialBlockId || (isAdmin ? 'ALL' : (blocks[0]?.id || 'ALL'));
   });
 
-  // जर इनचार्ज युझर स्टेट नंतर लोड झाली तर ब्लॉक आपोआप सेट करणे
   useEffect(() => {
     if (!isAdmin && inchargeBlockId && selectedBlockId !== inchargeBlockId) {
       setSelectedBlockId(inchargeBlockId);
@@ -104,7 +84,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
   const [referenceDate, setReferenceDate] = useState<string>(() => `${getTodayDateStr().slice(0, 7)}-01`);
 
-  // Editable Invoice fields
   const [voucherNo, setVoucherNo] = useState<string>(() => {
     const today = getTodayDateStr();
     const [y, m] = today.split('-');
@@ -113,10 +92,8 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
   });
   const [issueDate, setIssueDate] = useState<string>(getTodayDateStr());
 
-  // Print Preview Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
-  // Synchronize reference date when period type changes
   const handlePeriodChange = (type: 'day' | 'week' | 'month' | 'year') => {
     setPeriodType(type);
     if (type === 'day' || type === 'week') {
@@ -143,9 +120,9 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     setReferenceDate(`${yr}-01-01`);
   };
 
-  const effectiveBlockId = (!isAdmin && inchargeBlockId) ? inchargeBlockId : selectedBlockId;
+  // 🔴 सर्वात महत्त्वाचा बदल: इनचार्जसाठी नेहमी त्याचाच ब्लॉक फिक्स राहील, एडमिनसाठी स्वतः निवडलेला ब्लॉक येईल
+  const effectiveBlockId = (!isAdmin && inchargeBlockId) ? inchargeBlockId : (selectedBlockId || blocks[0]?.id || 'ALL');
 
-  // Compute live bill using exact formula
   const bill = useMemo(() => {
     return calculateBill({
       blockId: effectiveBlockId,
@@ -160,7 +137,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     normalizeBlock(b.code) === normalizeBlock(effectiveBlockId)
   );
 
-  // Generates standalone, pixel-perfect A4 printable HTML document without Billing Cycle
   const generateInvoiceHtml = () => {
     return `<!DOCTYPE html>
 <html lang="en">
@@ -372,7 +348,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
 
         {/* Period & Block Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Block Selector: फक्त ॲडमिनला ड्रॉपडाउन दाखवणे, इनचार्जसाठी ब्लॉक आपोआप लॉक राहील */}
           {isAdmin ? (
             <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
               <span className="text-xs font-semibold text-slate-400 px-2">Block:</span>
@@ -402,7 +377,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
             </div>
           )}
 
-          {/* Timeframe selector: Day / Week / Month / Year */}
+          {/* Timeframe selector */}
           <div className="flex items-center p-1 bg-slate-950/80 rounded-xl border border-slate-800">
             <button
               id="btn-bill-day"
@@ -450,7 +425,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
             </button>
           </div>
 
-          {/* Dynamic Date / Month / Year Selection Controls */}
           {periodType === 'day' && (
             <div className="flex items-center gap-1.5 bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800">
               <Calendar className="w-3.5 h-3.5 text-amber-400" />
@@ -512,7 +486,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
             </div>
           )}
 
-          {/* Action Buttons: Preview, Open Tab, Download & Print */}
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setIsPrintModalOpen(true)}
@@ -854,7 +827,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
                 <button
                   onClick={handleOpenInNewTab}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg shadow-sm cursor-pointer"
-                  title="Open standalone A4 invoice in a new tab"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
                   <span>Open in New Tab</span>
@@ -862,7 +834,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
                 <button
                   onClick={handleDownloadInvoiceHtml}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg shadow-sm cursor-pointer"
-                  title="Download HTML file"
                 >
                   <Download className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Download HTML</span>
@@ -979,10 +950,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
                   </div>
                 </div>
               </div>
-            </div>
-
-            <div className="px-4 py-3 bg-slate-950 border-t border-slate-800 text-center text-xs text-slate-400">
-              <span className="text-amber-400 font-semibold">Print Tip:</span> If browser sandbox blocks the direct print popup, click <strong className="text-slate-200">"Open in New Tab"</strong> to view and print the full A4 invoice directly or save as PDF.
             </div>
           </div>
         </div>
