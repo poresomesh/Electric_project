@@ -101,17 +101,9 @@ export const BillComparison: React.FC = () => {
 
     return data.map((d) => ({
       ...d,
-      percent: totalAllBills > 0 ? +((d.bill / totalAllBills) * 100).toFixed(1) : 0,
+      percent: totalAllBills > 0 ? Number(((d.bill / totalAllBills) * 100).toFixed(1)) : 0,
     }));
   }, [blocks, calculateBill, isAdmin, effectiveUserBlockId]);
-
-    const totalAllBills = data.reduce((sum, d) => sum + d.bill, 0);
-
-    return data.map((d) => ({
-      ...d,
-      percent: totalAllBills > 0 ? +((d.bill / totalAllBills) * 100).toFixed(1) : 0,
-    }));
-  }, [blocks, calculateBill]);
 
   const handleOpenEdit = () => {
     setEditBaseRate(tariff.baseRatePerUnit);
