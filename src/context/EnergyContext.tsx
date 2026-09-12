@@ -914,19 +914,31 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   };
 
-  const deleteUser = (id: string) => {
+const deleteUser = (id: string) => {
     if (currentUser.role !== 'admin') return false;
     if (users.length <= 1) return false;
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    setDeletedUserIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    
+    const updatedUsers = users.filter((u) => u.id !== id);
+    const updatedDeletedIds = deletedUserIds.includes(id) ? deletedUserIds : [...deletedUserIds, id];
+
+    setUsers(updatedUsers);
+    setDeletedUserIds(updatedDeletedIds);
+
+    // 1. सर्वरवर DELETE कॉल (आधीपासून आहे)
     void fetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
+
+    // 2. [नवीन जोडायचे] मुख्य शेअर स्टेट आणि deletedUserIds क्लाउडवर सिंक करण्यासाठी:
+    void saveSharedState({
+      users: updatedUsers,
+      deletedUserIds: updatedDeletedIds,
+    });
+
     setBlocks((prev) =>
       prev.map((b) => (b.inchargeId === id ? { ...b, inchargeId: undefined, inchargeName: 'Unassigned' } : b))
     );
     if (currentUser.id === id) {
-      const remaining = users.filter((u) => u.id !== id);
-      if (remaining.length > 0) {
-        setCurrentUser(remaining[0]);
+      if (updatedUsers.length > 0) {
+        setCurrentUser(updatedUsers[0]);
       }
     }
     return true;

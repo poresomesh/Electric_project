@@ -91,16 +91,33 @@ export const EnterReadingModal: React.FC<EnterReadingModalProps> = ({
   }, [isAdmin, currentUser, blocks]);
 
   const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
-    return defaultBlockId || availableBlocks[0]?.id || '';
+    if (defaultBlockId) return defaultBlockId;
+    // नवीन बदल: जर युझरकडे assignedBlockId असेल, तर पहिला ब्लॉक निवडण्याऐवजी त्याचाच ब्लॉक डीफॉल्ट करा
+    if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      const matchedBlock = availableBlocks.find(
+        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase() ||
+               normalizeBlockStr(b.id) === normalizeBlockStr(currentUser.assignedBlockId)
+      );
+      if (matchedBlock) return matchedBlock.id;
+    }
+    return availableBlocks[0]?.id || '';
   });
 
-  useEffect(() => {
+useEffect(() => {
     if (defaultBlockId) {
       setSelectedBlockId(defaultBlockId);
-    } else if (!selectedBlockId && availableBlocks.length > 0) {
-      setSelectedBlockId(availableBlocks[0].id);
+    } else if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      const matchedBlock = availableBlocks.find(
+        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase() ||
+              normalizeBlockStr(b.id) === normalizeBlockStr(currentUser.assignedBlockId)
+      );
+      if (matchedBlock) {
+        setSelectedBlockId(matchedBlock.id);
+      }
     }
-  }, [defaultBlockId, availableBlocks, selectedBlockId]);
+    // इथे आपण खालचा "availableBlocks[0]" चा भाग पूर्ण काढून टाकला आहे, 
+    // ज्यामुळे युझरकडे ब्लॉक नसेल तर तो आपोआप A ब्लॉक पकडणार नाही!
+  }, [defaultBlockId, availableBlocks, currentUser]);
 
   const [selectedMeterId, setSelectedMeterId] = useState<string>('');
   const [readingDate, setReadingDate] = useState<string>(getTodayDateStr());
