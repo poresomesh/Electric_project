@@ -576,41 +576,41 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setCurrentUser(INITIAL_USERS.find((user) => user.role === 'viewer') || INITIAL_USERS[0]);
   };
 
+  // अचूक आणि काटेकोर आयडी मॅचिंग लॉजिक (नवीन नावांच्या ब्लॉकमध्ये जुना डेटा जाणे रोखण्यासाठी)
   const visibleBlocks = useMemo(() => {
     if (isAdmin || isViewer) return blocks;
 
-    const uBlockId = currentUser.assignedBlockId;
-    const uname = (currentUser.username || '').toLowerCase();
-    const uid = (currentUser.id || '').toLowerCase();
+    const uBlockId = (currentUser.assignedBlockId || '').toLowerCase().trim();
+    const uid = (currentUser.id || '').toLowerCase().trim();
+    const uname = (currentUser.username || '').toLowerCase().trim();
     
     const matched = blocks.filter((b) => {
-      const bId = (b.id || '').toLowerCase();
-      const bCode = (b.code || '').toLowerCase();
-      const bInchargeId = (b.inchargeId || '').toLowerCase();
+      const bId = (b.id || '').toLowerCase().trim();
+      const bCode = (b.code || '').toLowerCase().trim();
+      const bInchargeId = (b.inchargeId || '').toLowerCase().trim();
+      
       return (
-        bId === uBlockId?.toLowerCase() ||
-        bCode === uBlockId?.toLowerCase() ||
+        bId === uBlockId ||
+        bCode === uBlockId ||
         bInchargeId === uid ||
-        uname.includes(normalizeBlockStr(b.id)) ||
-        uname.includes(normalizeBlockStr(b.code))
+        bInchargeId === uname
       );
     });
 
     if (matched.length > 0) return matched;
 
-    if (uBlockId && uBlockId !== 'ALL') {
-      const found = blocks.find(b => b.id.toLowerCase() === uBlockId.toLowerCase() || b.code.toLowerCase() === uBlockId.toLowerCase());
+    if (uBlockId && uBlockId !== 'all') {
+      const found = blocks.find(b => b.id.toLowerCase().trim() === uBlockId || b.code.toLowerCase().trim() === uBlockId);
       if (found) return [found];
     }
 
     return blocks.length > 0 ? [blocks[0]] : [];
   }, [blocks, isAdmin, isViewer, currentUser]);
 
-  // आवश्यक visibleMeters व्हेरिएबल (ब्लॅक स्क्रीन एरर दूर करण्यासाठी जोडले आहे)
   const visibleMeters = useMemo(() => {
     if (isAdmin || isViewer) return meters;
-    const allowedBlockLetters = new Set(visibleBlocks.map((b) => normalizeBlockStr(b.id)));
-    return meters.filter((m) => allowedBlockLetters.has(normalizeBlockStr(m.blockId)));
+    const allowedBlockIds = new Set(visibleBlocks.map((b) => b.id.toLowerCase()));
+    return meters.filter((m) => allowedBlockIds.has((m.blockId || '').toLowerCase()));
   }, [meters, visibleBlocks, isAdmin, isViewer]);
 
   const visibleReadings = useMemo(() => {
