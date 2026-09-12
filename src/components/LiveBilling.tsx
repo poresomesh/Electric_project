@@ -41,6 +41,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
   };
 
 // इनचार्ज इनचार्जचा ब्लॉक शोधणे (कडक आणि अचूक लॉजिक)
+// इनचार्ज इनचार्जचा ब्लॉक शोधणे (अचूक आणि एरर-फ्री लॉजिक)
   const inchargeBlockId = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock?.id) return userAssignedBlock.id;
