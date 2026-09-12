@@ -578,22 +578,28 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // अचूक आणि काटेकोर आयडी मॅचिंग लॉजिक (नवीन नावांच्या ब्लॉकमध्ये जुना डेटा जाणे रोखण्यासाठी)
   // अचूक आणि काटेकोर ब्लॉक आयसोलेशन लॉजिक (इनचार्जसाठी फक्त त्याचाच ब्लॉक, ॲडमिनसाठी सर्व)
-  const visibleBlocks = useMemo(() => {
+const visibleBlocks = useMemo(() => {
     if (isAdmin || isViewer) return blocks;
 
     const uBlockId = (currentUser.assignedBlockId || '').toLowerCase().trim();
     const uid = (currentUser.id || '').toLowerCase().trim();
     const uname = (currentUser.username || '').toLowerCase().trim();
     
+    // स्पेलिंग, स्पेस आणि डॅश काढून नॉर्मलाइज करणारी फंक्शन
+    const normalizeName = (str: string) => str.toLowerCase().replace(/[\s_-]/g, '').trim();
+    const normUBlockId = normalizeName(uBlockId);
+
     // १. अचूक ID, Code किंवा Incharge ID नुसार मॅच करणे
     const matched = blocks.filter((b) => {
-      const bId = (b.id || '').toLowerCase().trim();
-      const bCode = (b.code || '').toLowerCase().trim();
+      const bId = normalizeName(b.id || '');
+      const bCode = normalizeName(b.code || '');
+      const bName = normalizeName(b.name || '');
       const bInchargeId = (b.inchargeId || '').toLowerCase().trim();
       
       return (
-        bId === uBlockId ||
-        bCode === uBlockId ||
+        bId === normUBlockId ||
+        bCode === normUBlockId ||
+        bName === normUBlockId ||
         bInchargeId === uid ||
         bInchargeId === uname
       );
@@ -601,18 +607,26 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (matched.length > 0) return matched;
 
-    // २. जर ब्लॉक युझरनेम किंवा आयडीमध्ये जोडलेला असेल
+    // २. पार्शियल किंवा सबस्ट्रिंग मॅचिंग (वेगवेगळ्या नावांच्या ब्लॉक्ससाठी उपयुक्त)
     if (uBlockId && uBlockId !== 'all') {
-      const found = blocks.find(b => 
-        b.id.toLowerCase().trim().includes(uBlockId) || 
-        b.code.toLowerCase().trim().includes(uBlockId) ||
-        uBlockId.includes(b.id.toLowerCase().trim())
-      );
+      const found = blocks.find(b => {
+        const bId = normalizeName(b.id || '');
+        const bCode = normalizeName(b.code || '');
+        const bName = normalizeName(b.name || '');
+        return (
+          bId.includes(normUBlockId) || 
+          bCode.includes(normUBlockId) ||
+          bName.includes(normUBlockId) ||
+          normUBlockId.includes(bId) ||
+          normUBlockId.includes(bName)
+        );
+      });
       if (found) return [found];
     }
 
-    // ३. सेफ फॉलबॅक जेणेकरून डॅशबोर्ड ब्लँक होणार नाही
-    return blocks.length > 0 ? [blocks[0]] : [];
+    // ३. सुरक्षित फॉलबॅक: चुकूनही A Block (`blocks[0]`) दाखवण्याऐवजी खालीलप्रमाणे हाताळणे
+    // जर इनचार्ज असेल आणि ब्लॉक सापडला नाही, तर डॅशबोर्ड ब्लաंक राहिल पण चुकीचा ब्लॉक दिसणार नाही
+    return [];
   }, [blocks, isAdmin, isViewer, currentUser]);
 
   const visibleMeters = useMemo(() => {
