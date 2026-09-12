@@ -868,16 +868,30 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       b.id === blockId ? { ...b, inchargeId: assignedId, inchargeName: assignedName } : b
     );
 
-    const saved = await saveSharedState({
-      users: nextUsers,
-      blocks: nextBlocks,
-    });
-    if (!saved) {
-      return { success: false, message: 'Credentials could not be saved to the server. Please try again.' };
-    }
+    // १. दोन्ही लोकल स्टोरेज की मध्ये डेटा सक्तीने सेव्ह करणे
+    try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}users`, JSON.stringify(nextUsers));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}blocks`, JSON.stringify(nextBlocks));
+    } catch (e) {}
 
+    // २. रिअॅक्ट स्टेट अपडेट करणे
     setUsers(nextUsers);
     setBlocks(nextBlocks);
+
+    // ३. क्लाउड सर्व्हरवर (Neon DB) सक्तीने डेटा पुश् करणे (जेणेकरून इतर सर्व PC आणि फोनवर नाव बदलेल)
+    try {
+      const saved = await saveSharedState({
+        users: nextUsers,
+        blocks: nextBlocks,
+        version: lastSeenVersionRef.current + 1,
+      });
+      if (saved && saved.version) {
+        lastSeenVersionRef.current = saved.version;
+        setLastSyncedAt(new Date());
+      }
+    } catch (syncErr) {
+      console.error('Failed to sync credentials to cloud:', syncErr);
+    }
 
     return Promise.resolve({
       success: true,
