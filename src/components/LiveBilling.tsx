@@ -121,7 +121,19 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
   };
 
   // 🔴 सर्वात महत्त्वाचा बदल: इनचार्जसाठी नेहमी त्याचाच ब्लॉक फिक्स राहील, एडमिनसाठी स्वतः निवडलेला ब्लॉक येईल
-  const effectiveBlockId = (!isAdmin && inchargeBlockId) ? inchargeBlockId : (selectedBlockId || blocks[0]?.id || 'ALL');
+ // 🔴 अचूक ब्लॉक आयसोलेशन लॉजिक: इनचार्ज असेल तर १००% त्याचाच ब्लॉक लॉक राहील, ॲडमिन असेल तरच तो मॅन्युअल ब्लॉक किंवा ALL निवडू शकेल
+  const effectiveBlockId = useMemo(() => {
+    if (!isAdmin) {
+      if (inchargeBlockId) return inchargeBlockId;
+      if (userAssignedBlock?.id) return userAssignedBlock.id;
+      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+        return currentUser.assignedBlockId;
+      }
+      // जर इनचार्जचा ब्लॉक सापडला नाही, तर किमान उपलब्ध पहिल्या ब्लॉकचा आयडी द्यावा (ALL कधीही नाही)
+      return blocks[0]?.id || '';
+    }
+    return selectedBlockId;
+  }, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, blocks, selectedBlockId]);
 
   const bill = useMemo(() => {
     return calculateBill({
