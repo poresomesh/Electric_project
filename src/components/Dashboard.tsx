@@ -114,16 +114,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // २. ॲक्टिव्ह ब्लॉक आयडी: इनचार्जसाठी सक्तीने त्याचाच ब्लॉक, ॲडमिनसाठी सिलेक्ट केलेला
   const activeBlockId = !isAdmin && assignedBlock ? assignedBlock.id : 'ALL';
 
+// 🔴 ॲडमिनसाठी 'ALL', पण इनचार्ज असेल तर १००% त्याचाच assignedBlock ID फिक्स सेट राहील
   const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>(() => {
-    if (!isAdmin && assignedBlock) return assignedBlock.id;
+    if (!isAdmin) {
+      if (assignedBlock?.id) return assignedBlock.id;
+      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+        return currentUser.assignedBlockId;
+      }
+    }
     return 'ALL';
   });
 
   useEffect(() => {
-    if (!isAdmin && assignedBlock) {
-      setSelectedBlockFilter(assignedBlock.id);
+    if (!isAdmin) {
+      if (assignedBlock?.id && selectedBlockFilter !== assignedBlock.id) {
+        setSelectedBlockFilter(assignedBlock.id);
+      } else if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL' && selectedBlockFilter !== currentUser.assignedBlockId) {
+        setSelectedBlockFilter(currentUser.assignedBlockId);
+      }
     }
-  }, [isAdmin, assignedBlock]);
+  }, [isAdmin, assignedBlock, currentUser, selectedBlockFilter]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('ALL');
@@ -146,7 +156,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ३. तक्त्यातील नोंदी फिल्टर करणे (नवीन ॲड केलेली नोंद तात्काळ दिसणे)
 const filteredReadings = useMemo(() => {
-    const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
+    const currentFilter = !isAdmin 
+      ? (assignedBlock?.id || currentUser?.assignedBlockId || selectedBlockFilter) 
+      : selectedBlockFilter;
 
     return readings.filter((r) => {
       if (currentFilter !== 'ALL') {

@@ -106,7 +106,17 @@ export const EnergyGraphs: React.FC<EnergyGraphsProps> = ({ initialBlockId, week
     }
   }, [isAdmin, resolvedInchargeBlockId, initialBlockId]);
 
-  const effectiveBlockId = (!isAdmin && resolvedInchargeBlockId) ? resolvedInchargeBlockId : selectedBlockId;
+ // 🔴 अचूक ब्लॉक आयसोलेशन: इनचार्ज असेल तर सक्तीने त्याचा ब्लॉक लॉक राहील, ॲडमिन असेल तर निवडलेला ब्लॉक येईल
+  const effectiveBlockId = useMemo(() => {
+    if (!isAdmin) {
+      if (resolvedInchargeBlockId) return resolvedInchargeBlockId;
+      if (userAssignedBlock?.id) return userAssignedBlock.id;
+      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+        return currentUser.assignedBlockId;
+      }
+    }
+    return selectedBlockId || initialBlockId || 'ALL';
+  }, [isAdmin, resolvedInchargeBlockId, userAssignedBlock, currentUser, selectedBlockId, initialBlockId]);
 
   const [timeframe, setTimeframe] = useState<'day' | 'week' | 'month' | 'year'>('week');
   const [chartType, setChartType] = useState<'bar' | 'area' | 'line'>(weeklyLineOnly ? 'line' : 'bar');

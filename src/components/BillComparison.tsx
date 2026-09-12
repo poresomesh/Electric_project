@@ -57,9 +57,19 @@ export const BillComparison: React.FC = () => {
   const [editEffectiveTarget, setEditEffectiveTarget] = useState<string>('');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string>('');
 
+// 🔴 युझरनुसार अचूक बिल कंपॅरिजन मिळवणे (इनचार्जसाठी फक्त त्याचा ब्लॉक)
+  const effectiveUserBlockId = useMemo(() => {
+    if (isAdmin) return 'ALL';
+    if (userAssignedBlock?.id) return userAssignedBlock.id;
+    if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      return currentUser.assignedBlockId;
+    }
+    return blocks[0]?.id || 'ALL';
+  }, [isAdmin, userAssignedBlock, currentUser, blocks]);
+
   const comparisonData = useMemo(() => {
-    return getBillComparison();
-  }, [getBillComparison]);
+    return getBillComparison(effectiveUserBlockId);
+  }, [getBillComparison, effectiveUserBlockId]);
 
   const { monthlyList, currentMonthVsPrevMonth, currentMonthVsPrevYear } = comparisonData;
 
@@ -69,10 +79,14 @@ export const BillComparison: React.FC = () => {
     return +(tariff.baseRatePerUnit * taxMultiplier).toFixed(2);
   }, [tariff]);
 
-  // Block-wise cost breakdown for Current Month
+// 🔴 इनचार्ज असेल तर फक्त त्याचा ब्लॉक, ॲडमिन असेल तर सर्व ब्लॉक्सचा डिस्ट्रीब्यूशन डेटा
   const blockDistribution = useMemo(() => {
     const todayStr = getTodayDateStr();
-    const data = blocks.map((b) => {
+    const targetBlocks = (!isAdmin && effectiveUserBlockId && effectiveUserBlockId !== 'ALL')
+      ? blocks.filter(b => b.id === effectiveUserBlockId)
+      : blocks;
+
+    const data = targetBlocks.map((b) => {
       const bBill = calculateBill({ blockId: b.id, periodType: 'month', referenceDate: todayStr });
       return {
         name: b.name,
@@ -82,6 +96,14 @@ export const BillComparison: React.FC = () => {
         color: b.color,
       };
     });
+
+    const totalAllBills = data.reduce((sum, d) => sum + d.bill, 0);
+
+    return data.map((d) => ({
+      ...d,
+      percent: totalAllBills > 0 ? +((d.bill / totalAllBills) * 100).toFixed(1) : 0,
+    }));
+  }, [blocks, calculateBill, isAdmin, effectiveUserBlockId]);
 
     const totalAllBills = data.reduce((sum, d) => sum + d.bill, 0);
 

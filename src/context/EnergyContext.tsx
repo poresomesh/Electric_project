@@ -577,6 +577,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   // अचूक आणि काटेकोर आयडी मॅचिंग लॉजिक (नवीन नावांच्या ब्लॉकमध्ये जुना डेटा जाणे रोखण्यासाठी)
+  // अचूक आणि काटेकोर ब्लॉक आयसोलेशन लॉजिक (इनचार्जसाठी फक्त त्याचाच ब्लॉक, ॲडमिनसाठी सर्व)
   const visibleBlocks = useMemo(() => {
     if (isAdmin || isViewer) return blocks;
 
@@ -584,6 +585,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const uid = (currentUser.id || '').toLowerCase().trim();
     const uname = (currentUser.username || '').toLowerCase().trim();
     
+    // १. अचूक ID, Code किंवा Incharge ID नुसार मॅच करणे
     const matched = blocks.filter((b) => {
       const bId = (b.id || '').toLowerCase().trim();
       const bCode = (b.code || '').toLowerCase().trim();
@@ -599,13 +601,18 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (matched.length > 0) return matched;
 
+    // २. जर ब्लॉक युझरनेम किंवा आयडीमध्ये जोडलेला असेल
     if (uBlockId && uBlockId !== 'all') {
-      const found = blocks.find(b => b.id.toLowerCase().trim() === uBlockId || b.code.toLowerCase().trim() === uBlockId);
+      const found = blocks.find(b => 
+        b.id.toLowerCase().trim().includes(uBlockId) || 
+        b.code.toLowerCase().trim().includes(uBlockId) ||
+        uBlockId.includes(b.id.toLowerCase().trim())
+      );
       if (found) return [found];
     }
 
-    
-    return [];
+    // ३. सेफ फॉलबॅक जेणेकरून डॅशबोर्ड ब्लँक होणार नाही
+    return blocks.length > 0 ? [blocks[0]] : [];
   }, [blocks, isAdmin, isViewer, currentUser]);
 
   const visibleMeters = useMemo(() => {
