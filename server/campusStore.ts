@@ -106,22 +106,22 @@ async function loadState(): Promise<SharedCampusState | null> {
   } catch {
     return null;
   }
+}
 
-  function normalizeUserCredentials(state: SharedCampusState): SharedCampusState {
-    const adminId = protectedAdminId();
-    const needsDefaultMigration = (state.userPasswordPolicyVersion || 0) < 2;
-    return {
-      ...state,
-      userPasswordPolicyVersion: 2,
-      users: state.users.map((user) => (
-        needsDefaultMigration && user.id !== adminId && user.role !== 'admin'
-          ? { ...user, passwordHash: hashPassword(DEFAULT_USER_PASSWORD) }
-          : user.passwordHash
-            ? user
-            : { ...user, passwordHash: hashPassword(DEFAULT_USER_PASSWORD) }
-      )),
-    };
-  }
+function normalizeUserCredentials(state: SharedCampusState): SharedCampusState {
+  const adminId = protectedAdminId();
+  const needsDefaultMigration = (state.userPasswordPolicyVersion || 0) < 2;
+  return {
+    ...state,
+    userPasswordPolicyVersion: 2,
+    users: state.users.map((user) => (
+      needsDefaultMigration && user.id !== adminId && user.role !== 'admin'
+        ? { ...user, passwordHash: hashPassword(DEFAULT_USER_PASSWORD) }
+        : user.passwordHash
+          ? user
+          : { ...user, passwordHash: hashPassword(DEFAULT_USER_PASSWORD) }
+    )),
+  };
 }
 
 async function persistState(state: SharedCampusState): Promise<void> {
@@ -170,19 +170,16 @@ export async function getCampusState(): Promise<SharedCampusState> {
   return (await loadState()) || emptyState();
 }
 
-
 export async function putCampusState(
   incoming: Partial<SharedCampusState>
 ): Promise<SharedCampusState> {
   const current = (await loadState()) || emptyState();
 
-  // mergeSharedState वापरल्याने सर्व ऐतिहासिक readings, meters आणि users आपोआप सिंक राहतात
   const merged = mergeSharedState(current, removeUserSecrets(incoming));
 
   const next: SharedCampusState = {
     ...merged,
     version: (current.version || 0) + 1,
-    // 1. ब्लॉक इनचार्जचे नाव आणि आयडी कायमस्वरूपी सेव्ह ठेवणे
     blocks: incoming.blocks
       ? incoming.blocks.map((incBlock) => {
           const old = current.blocks.find((b) => b.id === incBlock.id);
@@ -194,7 +191,6 @@ export async function putCampusState(
           };
         })
       : merged.blocks,
-    // 2. युझर्स अपडेट करताना (नाव बदलताना) जुना युझर ओव्हरराईट होऊन नवीन नाव अचूकपणे सेव्ह करणे
     users: incoming.users
       ? (() => {
           const userMap = new Map(current.users.map((u) => [u.id, u]));
@@ -274,7 +270,6 @@ function canWriteState(user: AuthUser, incoming: Partial<SharedCampusState>): bo
 }
 
 function validateUserChanges(current: SharedCampusState, incoming: Partial<SharedCampusState>): string | null {
-  // 409 Conflict एरर कायमचा बंद करण्यासाठी इथे कोणतीही अट न ठेवता थेट null रिटर्न करणे
   return null;
 }
 
