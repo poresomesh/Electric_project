@@ -171,11 +171,12 @@ export async function getCampusState(): Promise<SharedCampusState> {
 }
 
 export async function putCampusState(
+export async function putCampusState(
   incoming: Partial<SharedCampusState>
 ): Promise<SharedCampusState> {
   const current = (await loadState()) || emptyState();
 
-  // mergeSharedState वापरल्याने MongoDB Atlas प्रमाणे सर्व ऐतिहासिक readings, meters आणि users आपोआप सिंक राहतात
+  // mergeSharedState वापरल्याने सर्व ऐतिहासिक readings, meters आणि users आपोआप सिंक राहतात
   const merged = mergeSharedState(current, removeUserSecrets(incoming));
 
   const next: SharedCampusState = {
@@ -193,12 +194,14 @@ export async function putCampusState(
           };
         })
       : merged.blocks,
-    // 2. नवीन तयार केलेले युझर्स गायब न होऊ देणे
+    // 2. युझर्स अपडेट करताना (नाव बदलताना) जुना युझर ओव्हरराईट होऊन नवीन नाव अचूकपणे सेव्ह करणे
     users: incoming.users
       ? (() => {
-          const incomingIds = new Set(incoming.users.map((u) => u.id));
-          const retainedOldUsers = current.users.filter((u) => !incomingIds.has(u.id));
-          return [...retainedOldUsers, ...incoming.users];
+          const userMap = new Map(current.users.map((u) => [u.id, u]));
+          for (const u of incoming.users) {
+            userMap.set(u.id, { ...(userMap.get(u.id) || {}), ...u });
+          }
+          return Array.from(userMap.values());
         })()
       : merged.users,
   };
