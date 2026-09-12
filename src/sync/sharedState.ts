@@ -22,7 +22,6 @@ export async function fetchSharedState(): Promise<SharedCampusState | null> {
     return null;
   }
 }
-
 export async function saveSharedState(
   payload: Partial<SharedCampusState>
 ): Promise<SharedCampusState | null> {
@@ -31,7 +30,7 @@ export async function saveSharedState(
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(payload), // यात version पाठवू नका म्हणजे 409 Conflict एरर येणार नाही
+      body: JSON.stringify(payload),
     });
     
     if (!res.ok) return null;
