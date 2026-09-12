@@ -27,18 +27,24 @@ export async function saveSharedState(
   payload: Partial<SharedCampusState> & { version?: number }
 ): Promise<SharedCampusState | null> {
   try {
+    // वर्तमान सर्व्हर स्टेट आणून व्हर्जन नंबर सुरक्षितपणे मॅनेज करणे
+    const currentRemote = await fetchSharedState();
+    const nextVersion = (currentRemote?.version || 0) + 1;
+
     const res = await fetch(stateUrl(), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        version: nextVersion,
+      }),
     });
     
-    // जरी सर्व्हरने नॉन-200 किंवा वेगळा रिस्पॉन्स दिला तरी पेलोड सुरक्षित ठेवण्यासाठी
+    if (!res.ok) return null;
     const text = await res.text();
     if (!text) return null;
-    const data = JSON.parse(text);
-    return data as SharedCampusState;
+    return JSON.parse(text) as SharedCampusState;
   } catch (err) {
     console.error('saveSharedState error:', err);
     return null;
