@@ -39,13 +39,14 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
   };
 
-  // अचूक आणि स्ट्रिक्ट इनचार्ज ब्लॉक आयडी (चुकीने A Block कडे डीफॉल्ट उडी मारणे बंद केले आहे)
+  // अचूक आणि स्ट्रिक्ट इनचार्ज ब्लॉक आयडी
   const inchargeBlockId = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock?.id) return userAssignedBlock.id;
 
     const uBlockId = (currentUser?.assignedBlockId || '').trim().toLowerCase();
     const uid = (currentUser?.id || '').trim().toLowerCase();
+    const uname = (currentUser?.username || '').trim().toLowerCase();
 
     if (blocks && blocks.length > 0) {
       const found = blocks.find((b) => {
@@ -55,22 +56,38 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
         return (
           bId === uBlockId ||
           bCode === uBlockId ||
-          bInchargeId === uid
+          bInchargeId === uid ||
+          bInchargeId === uname
         );
       });
       if (found) return found.id;
     }
 
+    // जर आयडी थेट जुळला नाही तर नेम किंवा युझरनेममधील अक्षर शोधणे
+    const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
+    if (match && blocks) {
+      const letter = match[1].toLowerCase();
+      const foundLetter = blocks.find(b => normalizeBlock(b.id) === letter || normalizeBlock(b.code) === letter);
+      if (foundLetter) return foundLetter.id;
+    }
+
     return null;
   }, [isAdmin, currentUser, userAssignedBlock, blocks]);
 
-  // Selected scope & timeframe (इथे आधी block-a डीफॉल्ट होता, तो काढून आता सुरक्षित ब्लॉक सेट केला आहे)
-  const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
-    if (!isAdmin && inchargeBlockId) {
-      return inchargeBlockId;
+  const [selectedBlockId, setSelectedBlockId] = useState<string>('ALL');
+
+  // 🔴 प्रभावी आणि कडक ब्लॉक आयसोलेशन: इनचार्ज असेल तर १००% त्याचाच ब्लॉक लॉक राहील
+  const effectiveBlockId = useMemo(() => {
+    if (!isAdmin) {
+      if (inchargeBlockId) return inchargeBlockId;
+      if (userAssignedBlock?.id) return userAssignedBlock.id;
+      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+        return currentUser.assignedBlockId;
+      }
+      if (blocks && blocks.length > 0) return blocks[0].id;
     }
-    return initialBlockId || (isAdmin ? 'ALL' : (blocks[0]?.id || 'ALL'));
-  });
+    return selectedBlockId;
+  }, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, blocks, selectedBlockId]);
 
   useEffect(() => {
     if (!isAdmin && inchargeBlockId && selectedBlockId !== inchargeBlockId) {
@@ -119,21 +136,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     setSelectedYear(yr);
     setReferenceDate(`${yr}-01-01`);
   };
-
-  // 🔴 सर्वात महत्त्वाचा बदल: इनचार्जसाठी नेहमी त्याचाच ब्लॉक फिक्स राहील, एडमिनसाठी स्वतः निवडलेला ब्लॉक येईल
- // 🔴 अचूक ब्लॉक आयसोलेशन लॉजिक: इनचार्ज असेल तर १००% त्याचाच ब्लॉक लॉक राहील, ॲडमिन असेल तरच तो मॅन्युअल ब्लॉक किंवा ALL निवडू शकेल
-  const effectiveBlockId = useMemo(() => {
-    if (!isAdmin) {
-      if (inchargeBlockId) return inchargeBlockId;
-      if (userAssignedBlock?.id) return userAssignedBlock.id;
-      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-        return currentUser.assignedBlockId;
-      }
-      // जर इनचार्जचा ब्लॉक सापडला नाही, तर किमान उपलब्ध पहिल्या ब्लॉकचा आयडी द्यावा (ALL कधीही नाही)
-      return blocks[0]?.id || '';
-    }
-    return selectedBlockId;
-  }, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, blocks, selectedBlockId]);
 
   const bill = useMemo(() => {
     return calculateBill({
