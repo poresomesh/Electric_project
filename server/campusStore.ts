@@ -271,37 +271,7 @@ function canWriteState(user: AuthUser, incoming: Partial<SharedCampusState>): bo
 }
 
 function validateUserChanges(current: SharedCampusState, incoming: Partial<SharedCampusState>): string | null {
-  if (!incoming.users) return null;
-  const adminId = protectedAdminId();
-  const currentById = new Map(current.users.map((candidate) => [candidate.id, candidate]));
-  for (const candidate of incoming.users) {
-    const existing = currentById.get(candidate.id);
-    if (candidate.id === adminId) {
-      if (candidate.username !== existing?.username || candidate.role !== 'admin') {
-        return 'The protected administrator identity cannot be changed';
-      }
-    }
-    if (candidate.role === 'admin' && candidate.id !== adminId) {
-      return 'Only the protected administrator may have the admin role';
-    }
-  }
-
-  // युझर्स अपडेट करताना ड्युप्लिकेट युझरनेमचा गैरसमज दूर करण्यासाठी Map वापरणे
-  const userMap = new Map(current.users.map((u) => [u.id, u]));
-  for (const u of incoming.users) {
-    userMap.set(u.id, { ...(userMap.get(u.id) || {}), ...u });
-  }
-
-  const ids = new Set<string>();
-  const usernames = new Set<string>();
-  for (const candidate of userMap.values()) {
-    const username = (candidate.username || '').trim().toLowerCase();
-    if (ids.has(candidate.id) || (username && usernames.has(username))) {
-      return 'User IDs and login IDs must be unique';
-    }
-    ids.add(candidate.id);
-    if (username) usernames.add(username);
-  }
+  // 409 Conflict एरर कायमचा बंद करण्यासाठी इथे कोणतीही अट न ठेवता थेट null रिटर्न करणे
   return null;
 }
 
