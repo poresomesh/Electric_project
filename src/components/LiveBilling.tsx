@@ -40,7 +40,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
   };
 
-  // युझर इनचार्ज असल्यास त्याचा खात्रीशीर ब्लॉक आयडी काढणे (A, B, C, D कडक आयसोलेशन)
+// इनचार्ज इनचार्जचा ब्लॉक शोधणे (कडक आणि अचूक लॉजिक)
   const inchargeBlockId = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock?.id) return userAssignedBlock.id;
@@ -49,7 +49,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     const uname = (currentUser?.username || '').trim().toLowerCase();
     const uid = (currentUser?.id || '').trim().toLowerCase();
 
-    // incharge_c -> 'c', incharge_b -> 'b' शोधणे
     let targetLetter = '';
     const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
     if (match) {
@@ -57,7 +56,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     } else if (uBlockId && uBlockId !== 'all') {
       targetLetter = normalizeBlock(uBlockId);
     }
-// इनचार्ज इनचार्जचा ब्लॉक शोधताना अधिक कडक आणि लवचिक मॅचिंग
+
     if (blocks && blocks.length > 0) {
       const found = blocks.find((b) => {
         const bId = (b.id || '').toLowerCase();
@@ -72,7 +71,17 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
         );
       });
       if (found) return found.id;
+
+      const byIncharge = blocks.find((b) => 
+        (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
+        (b.inchargeId && b.inchargeId.toLowerCase() === uname)
+      );
+      if (byIncharge) return byIncharge.id;
     }
+
+    if (targetLetter) return `block-${targetLetter}`;
+    return null;
+  }, [isAdmin, currentUser, userAssignedBlock, blocks]);
 
       const byIncharge = blocks.find((b) => 
         (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
