@@ -40,8 +40,7 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     return val.toLowerCase().replace(/^(block|blk)[_-]/, '').trim();
   };
 
-// इनचार्ज इनचार्जचा ब्लॉक शोधणे (कडक आणि अचूक लॉजिक)
-// इनचार्ज इनचार्जचा ब्लॉक शोधणे (अचूक आणि एरर-फ्री लॉजिक)
+  // इनचार्जचा ब्लॉक शोधणे (कडक आणि अचूक एरर-फ्री लॉजिक)
   const inchargeBlockId = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock?.id) return userAssignedBlock.id;
@@ -72,17 +71,6 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
         );
       });
       if (found) return found.id;
-
-      const byIncharge = blocks.find((b) => 
-        (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
-        (b.inchargeId && b.inchargeId.toLowerCase() === uname)
-      );
-      if (byIncharge) return byIncharge.id;
-    }
-
-    if (targetLetter) return `block-${targetLetter}`;
-    return null;
-  }, [isAdmin, currentUser, userAssignedBlock, blocks]);
 
       const byIncharge = blocks.find((b) => 
         (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||
