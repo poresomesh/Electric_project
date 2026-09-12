@@ -581,49 +581,43 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const uBlockId = currentUser.assignedBlockId;
     const uname = (currentUser.username || '').toLowerCase();
-    const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
-    const targetLetter = match ? match[1] : normalizeBlockStr(uBlockId);
+    const uid = (currentUser.id || '').toLowerCase();
+    
+    // युझरच्या assignedBlockId, username किंवा id वरून अचूक ब्लॉक शोधणे
+    const matched = blocks.filter((b) => {
+      const bId = (b.id || '').toLowerCase();
+      const bCode = (b.code || '').toLowerCase();
+      const bInchargeId = (b.inchargeId || '').toLowerCase();
+      return (
+        bId === uBlockId?.toLowerCase() ||
+        bCode === uBlockId?.toLowerCase() ||
+        bInchargeId === uid ||
+        uname.includes(normalizeBlockStr(b.id)) ||
+        uname.includes(normalizeBlockStr(b.code))
+      );
+    });
 
-    if (targetLetter && targetLetter !== 'all') {
-      const matched = blocks.filter((b) => {
-        const bNorm = normalizeBlockStr(b.id);
-        const cNorm = normalizeBlockStr(b.code);
-        return bNorm === targetLetter || cNorm === targetLetter;
-      });
-      if (matched.length > 0) return matched;
+    if (matched.length > 0) return matched;
+
+    // जर वरीलपैकी काहीच मॅच नाही झाले, पण assignedBlockId असेल तर तो शोधणे
+    if (uBlockId && uBlockId !== 'ALL') {
+      const found = blocks.find(b => b.id.toLowerCase() === uBlockId.toLowerCase() || b.code.toLowerCase() === uBlockId.toLowerCase());
+      if (found) return [found];
     }
-
-    const byInchargeId = blocks.filter(
-      (b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase()
-    );
-    if (byInchargeId.length > 0) return byInchargeId;
 
     return blocks.length > 0 ? [blocks[0]] : [];
   }, [blocks, isAdmin, isViewer, currentUser]);
 
-  const visibleMeters = useMemo(() => {
-    if (isAdmin || isViewer) return meters;
-
-    const allowedBlockLetters = new Set(visibleBlocks.map((b) => normalizeBlockStr(b.id)));
-    return meters.filter((m) => allowedBlockLetters.has(normalizeBlockStr(m.blockId)));
-  }, [meters, visibleBlocks, isAdmin, isViewer]);
-
   const visibleReadings = useMemo(() => {
     let list = readings;
     if (!isAdmin && !isViewer) {
-      const uBlockId = currentUser.assignedBlockId;
-      const uname = (currentUser.username || '').toLowerCase();
-      const match = uname.match(/incharge[_-]([a-z0-9]+)/) || uname.match(/block[_-]([a-z0-9]+)/);
-      const targetLetter = match ? match[1] : normalizeBlockStr(uBlockId);
-
-      if (targetLetter && targetLetter !== 'all') {
-        list = readings.filter((r) => {
-          const rLetter = normalizeBlockStr(r.blockId);
-          return rLetter === targetLetter || (r.blockId || '').toLowerCase() === (uBlockId || '').toLowerCase();
-        });
-      } else {
-        list = [];
-      }
+      const allowedBlockIds = new Set(visibleBlocks.map(b => b.id.toLowerCase()));
+      const allowedBlockCodes = new Set(visibleBlocks.map(b => (b.code || '').toLowerCase()));
+      
+      list = readings.filter((r) => {
+        const rBlock = (r.blockId || '').toLowerCase();
+        return allowedBlockIds.has(rBlock) || allowedBlockCodes.has(rBlock);
+      });
     }
 
     return [...list].sort((a, b) => {
@@ -633,7 +627,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (timeCmp !== 0) return timeCmp;
       return (b.createdAt || '').localeCompare(a.createdAt || '');
     });
-  }, [readings, isAdmin, isViewer, currentUser]);
+  }, [readings, isAdmin, isViewer, visibleBlocks]);
 
   const visibleExceedances = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
