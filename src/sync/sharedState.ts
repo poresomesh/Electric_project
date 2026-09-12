@@ -24,21 +24,14 @@ export async function fetchSharedState(): Promise<SharedCampusState | null> {
 }
 
 export async function saveSharedState(
-  payload: Partial<SharedCampusState> & { version?: number }
+  payload: Partial<SharedCampusState>
 ): Promise<SharedCampusState | null> {
   try {
-    // वर्तमान सर्व्हर स्टेट आणून व्हर्जन नंबर सुरक्षितपणे मॅनेज करणे
-    const currentRemote = await fetchSharedState();
-    const nextVersion = (currentRemote?.version || 0) + 1;
-
     const res = await fetch(stateUrl(), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({
-        ...payload,
-        version: nextVersion,
-      }),
+      body: JSON.stringify(payload), // यात version पाठवू नका म्हणजे 409 Conflict एरर येणार नाही
     });
     
     if (!res.ok) return null;
