@@ -35,10 +35,13 @@ import {
 } from 'recharts';
 
 export const BillComparison: React.FC = () => {
-  const {
+const {
     blocks,
     tariff,
     isDarkMode,
+    isAdmin,
+    currentUser,
+    userAssignedBlock,
     getBillComparison,
     calculateBill,
     updateTariff,
