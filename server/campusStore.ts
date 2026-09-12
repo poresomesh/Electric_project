@@ -333,24 +333,40 @@ export async function handleCampusStateRequest(
   incoming?: Partial<SharedCampusState>
 ): Promise<StateApiResult> {
   try {
-    if (!user) return { status: 401, body: { error: 'Authentication required', storage: storageKind() } };
+    // 1. POST/PUT साठी लॉगिन बंधनकारक, पण GET साठी अनलॉगिन युझरला मुभा देणे
+    if (!user && method !== 'GET') return { status: 401, body: { error: 'Authentication required', storage: storageKind() } };
+    
     if (method === 'GET') {
       const state = await getCampusState();
-      const visible = isAdmin(user)
+      const visible = user && isAdmin(user)
         ? state
-        : {
-            ...state,
-            users: state.users.filter((candidate) => candidate.id === user.id),
-            blocks: state.blocks.filter((block) => roleAllowsBlock(user, block.id)),
-            meters: state.meters.filter((meter) => roleAllowsBlock(user, meter.blockId)),
-            readings: state.readings.filter((reading) => roleAllowsBlock(user, reading.blockId)),
-            exceedances: state.exceedances.filter((item) => roleAllowsBlock(user, item.blockId)),
-            notifications: state.notifications.filter((item) =>
-              item.userId ? item.userId === user.id : roleAllowsBlock(user, item.blockId)
-            ),
-          };
+        : user
+          ? {
+              ...state,
+              users: state.users.filter((candidate) => candidate.id === user.id),
+              blocks: state.blocks.filter((block) => roleAllowsBlock(user, block.id)),
+              meters: state.meters.filter((meter) => roleAllowsBlock(user, meter.blockId)),
+              readings: state.readings.filter((reading) => roleAllowsBlock(user, reading.blockId)),
+              exceedances: state.exceedances.filter((item) => roleAllowsBlock(user, item.blockId)),
+              notifications: state.notifications.filter((item) =>
+                item.userId ? item.userId === user.id : roleAllowsBlock(user, item.blockId)
+              ),
+            }
+          : {
+              ...state,
+              // युझर लॉग इन नसतानाही लॉगिन पेजवर सर्व युझर्स आणि ब्लॉक्सची नवीन नावे दिसण्यासाठी:
+              users: state.users,
+              blocks: state.blocks,
+              meters: [],
+              readings: [],
+              exceedances: [],
+              notifications: [],
+            };
       return { status: 200, body: sanitizeState(visible) };
     }
+
+    if (!user) return { status: 401, body: { error: 'Authentication required', storage: storageKind() } };
+    
     if (method === 'PUT' || method === 'POST') {
       if (!canWriteState(user, incoming || {})) {
         return { status: 403, body: { error: 'Forbidden', storage: storageKind() } };

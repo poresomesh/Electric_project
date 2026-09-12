@@ -504,7 +504,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}deleted_notification_ids`, JSON.stringify(deletedNotificationIds));
   }, [deletedNotificationIds]);
 
-// Initial Load from Cloud DB (ॲप उघडल्यावर किंवा रिफ्रेश झाल्यावर क्लाउडवरून युझर्स, ब्लॉक्स आणि सर्व डेटा लोड करणे)
+// Initial Load from Cloud DB (ॲप उघडल्यावर किंवा रिफ्रेश झाल्यावर लॉगिन नसतानाही क्लाउडवरून युझर्स आणि ब्लॉक्स लोड करणे)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -512,10 +512,10 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (cancelled) return;
       if (remote) {
         lastSeenVersionRef.current = remote.version || 0;
-        if (remote.readings && remote.readings.length > 0) setReadings(remote.readings);
-        if (remote.meters && remote.meters.length > 0) setMeters(remote.meters);
         if (remote.users && remote.users.length > 0) setUsers(remote.users);
         if (remote.blocks && remote.blocks.length > 0) setBlocks(remote.blocks);
+        if (remote.readings && remote.readings.length > 0) setReadings(remote.readings);
+        if (remote.meters && remote.meters.length > 0) setMeters(remote.meters);
         setLastSyncedAt(new Date());
         setSyncStatus('cloud');
       }
