@@ -782,18 +782,31 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         : b
     );
 
-    const saved = await saveSharedState({
-      users: updatedUsers,
-      blocks: updatedBlocks,
-    });
+    // १. लोकल स्टोरेजमध्ये तात्काळ सेव्ह करणे
+    try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}users`, JSON.stringify(updatedUsers));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}blocks`, JSON.stringify(updatedBlocks));
+    } catch (e) {}
 
-    if (saved?.version) {
-      lastSeenVersionRef.current = saved.version;
-      setLastSyncedAt(new Date());
-    }
-
+    // २. स्टेट अपडेट करणे
     setUsers(updatedUsers);
     setBlocks(updatedBlocks);
+
+    // ३. क्लाउड सर्व्हरवर (Neon DB) सक्तीने पाठवणे (जेणेकरून मोबाईलवरही नाव बदलेल)
+    try {
+      const saved = await saveSharedState({
+        users: updatedUsers,
+        blocks: updatedBlocks,
+        version: lastSeenVersionRef.current + 1,
+      });
+
+      if (saved?.version) {
+        lastSeenVersionRef.current = saved.version;
+        setLastSyncedAt(new Date());
+      }
+    } catch (err) {
+      console.error('Failed to sync updateUser to cloud:', err);
+    }
 
     if (currentUser.id === id) {
       setCurrentUser((prev) => ({ ...prev, ...updates, id: targetId }));
