@@ -22,6 +22,7 @@ export async function fetchSharedState(): Promise<SharedCampusState | null> {
     return null;
   }
 }
+
 export async function saveSharedState(
   payload: Partial<SharedCampusState>
 ): Promise<SharedCampusState | null> {

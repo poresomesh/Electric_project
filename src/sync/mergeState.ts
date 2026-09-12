@@ -38,7 +38,11 @@ export function mergeById<T extends { id: string }>(base: T[] = [], incoming: T[
     if (item?.id) map.set(item.id, item);
   }
   for (const item of incoming) {
-    if (item?.id) map.set(item.id, item);
+    if (item?.id) {
+      // युझर किंवा ब्लॉक अपडेट करताना जुन्या डेटावर नवीन प्रॉपर्टीज अचूक मर्ज करणे
+      const existing = map.get(item.id);
+      map.set(item.id, existing ? { ...existing, ...item } : item);
+    }
   }
   return Array.from(map.values());
 }
