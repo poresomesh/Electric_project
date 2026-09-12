@@ -170,7 +170,7 @@ export async function getCampusState(): Promise<SharedCampusState> {
   return (await loadState()) || emptyState();
 }
 
-export async function putCampusState(
+
 export async function putCampusState(
   incoming: Partial<SharedCampusState>
 ): Promise<SharedCampusState> {
