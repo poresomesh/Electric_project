@@ -57,18 +57,22 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     } else if (uBlockId && uBlockId !== 'all') {
       targetLetter = normalizeBlock(uBlockId);
     }
-
+// इनचार्ज इनचार्जचा ब्लॉक शोधताना अधिक कडक आणि लवचिक मॅचिंग
     if (blocks && blocks.length > 0) {
       const found = blocks.find((b) => {
         const bId = (b.id || '').toLowerCase();
         const bCode = (b.code || '').toLowerCase();
+        const bName = (b.name || '').toLowerCase();
         return (
           bId === uBlockId ||
           bCode === uBlockId ||
+          bName.includes(uBlockId) ||
+          normalizeBlock(bId) === normalizeBlock(uBlockId) ||
           (targetLetter && (normalizeBlock(bId) === targetLetter || normalizeBlock(bCode) === targetLetter))
         );
       });
       if (found) return found.id;
+    }
 
       const byIncharge = blocks.find((b) => 
         (b.inchargeId && b.inchargeId.toLowerCase() === uid) ||

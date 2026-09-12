@@ -145,7 +145,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [readings]);
 
   // ३. तक्त्यातील नोंदी फिल्टर करणे (नवीन ॲड केलेली नोंद तात्काळ दिसणे)
-  const filteredReadings = useMemo(() => {
+const filteredReadings = useMemo(() => {
     const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
 
     return readings.filter((r) => {

@@ -77,15 +77,27 @@ export const DayWiseConsumption: React.FC<DayWiseConsumptionProps> = ({
   } = useEnergy();
 
   // इनचार्जचा ब्लॉक सुरक्षित शोधणे
+// इनचार्जचा ब्लॉक सुरक्षित शोधणे (सुधारित लॉजिक)
   const assignedBlock = useMemo(() => {
     if (isAdmin) return null;
     if (userAssignedBlock) return userAssignedBlock;
     if (currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      const found = blocks.find((b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase());
+      const found = blocks.find(
+        (b) => b.id.toLowerCase() === currentUser.assignedBlockId?.toLowerCase() ||
+              b.code?.toLowerCase() === currentUser.assignedBlockId?.toLowerCase()
+      );
       if (found) return found;
     }
+    // नवीन: जर assignedBlockId सापडला नाही, तर युझरनेम किंवा ID मधून ब्लॉक जुळवण्याचा प्रयत्न करा
     const byInchargeId = blocks.find((b) => b.inchargeId && b.inchargeId.toLowerCase() === currentUser.id.toLowerCase());
-    return byInchargeId || null;
+    if (byInchargeId) return byInchargeId;
+
+    // समजा युझरनेममध्येच ब्लॉकचं नाव असेल (उदा. blk_b किंवा B block)
+    const byUsername = blocks.find((b) => 
+      currentUser.username?.toLowerCase().includes(b.id.toLowerCase()) ||
+      currentUser.username?.toLowerCase().includes(b.code?.toLowerCase())
+    );
+    return byUsername || null;
   }, [isAdmin, userAssignedBlock, currentUser, blocks]);
 
   // इनचार्जसाठी फक्त त्याचाच ब्लॉक, ॲडमिनसाठी सर्व ब्लॉक्स
