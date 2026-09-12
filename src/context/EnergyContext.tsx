@@ -604,7 +604,8 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (found) return [found];
     }
 
-    return blocks.length > 0 ? [blocks[0]] : [];
+    
+    return [];
   }, [blocks, isAdmin, isViewer, currentUser]);
 
   const visibleMeters = useMemo(() => {
