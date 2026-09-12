@@ -504,7 +504,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}deleted_notification_ids`, JSON.stringify(deletedNotificationIds));
   }, [deletedNotificationIds]);
 
-// Initial Load from Cloud DB (ॲप उघडल्यावर किंवा रिफ्रेश झाल्यावर लॉगिन नसतानाही क्लाउडवरून युझर्स आणि ब्लॉक्स लोड करणे)
+  // Initial Load from Cloud DB
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -583,7 +583,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const uname = (currentUser.username || '').toLowerCase();
     const uid = (currentUser.id || '').toLowerCase();
     
-    // युझरच्या assignedBlockId, username किंवा id वरून अचूक ब्लॉक शोधणे
     const matched = blocks.filter((b) => {
       const bId = (b.id || '').toLowerCase();
       const bCode = (b.code || '').toLowerCase();
@@ -599,7 +598,6 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (matched.length > 0) return matched;
 
-    // जर वरीलपैकी काहीच मॅच नाही झाले, पण assignedBlockId असेल तर तो शोधणे
     if (uBlockId && uBlockId !== 'ALL') {
       const found = blocks.find(b => b.id.toLowerCase() === uBlockId.toLowerCase() || b.code.toLowerCase() === uBlockId.toLowerCase());
       if (found) return [found];
@@ -607,6 +605,13 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     return blocks.length > 0 ? [blocks[0]] : [];
   }, [blocks, isAdmin, isViewer, currentUser]);
+
+  // आवश्यक visibleMeters व्हेरिएबल (ब्लॅक स्क्रीन एरर दूर करण्यासाठी जोडले आहे)
+  const visibleMeters = useMemo(() => {
+    if (isAdmin || isViewer) return meters;
+    const allowedBlockLetters = new Set(visibleBlocks.map((b) => normalizeBlockStr(b.id)));
+    return meters.filter((m) => allowedBlockLetters.has(normalizeBlockStr(m.blockId)));
+  }, [meters, visibleBlocks, isAdmin, isViewer]);
 
   const visibleReadings = useMemo(() => {
     let list = readings;
@@ -778,17 +783,14 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         : b
     );
 
-    // १. लोकल स्टोरेजमध्ये तात्काळ सेव्ह करणे
     try {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}users`, JSON.stringify(updatedUsers));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}blocks`, JSON.stringify(updatedBlocks));
     } catch (e) {}
 
-    // २. स्टेट अपडेट करणे
     setUsers(updatedUsers);
     setBlocks(updatedBlocks);
 
-    // ३. क्लाउड सर्व्हरवर (Neon DB) सक्तीने पाठवणे (जेणेकरून मोबाईलवरही नाव बदलेल)
     try {
       const saved = await saveSharedState({
         users: updatedUsers,
@@ -877,17 +879,14 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       b.id === blockId ? { ...b, inchargeId: assignedId, inchargeName: assignedName } : b
     );
 
-    // १. दोन्ही लोकल स्टोरेज की मध्ये डेटा सक्तीने सेव्ह करणे
     try {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}users`, JSON.stringify(nextUsers));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}blocks`, JSON.stringify(nextBlocks));
     } catch (e) {}
 
-    // २. रिअॅक्ट स्टेट अपडेट करणे
     setUsers(nextUsers);
     setBlocks(nextBlocks);
 
-    // ३. क्लाउड सर्व्हरवर (Neon DB) सक्तीने डेटा पुश् करणे (जेणेकरून इतर सर्व PC आणि फोनवर नाव बदलेल)
     try {
       const saved = await saveSharedState({
         users: nextUsers,
@@ -908,7 +907,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   };
 
-const deleteUser = (id: string) => {
+  const deleteUser = (id: string) => {
     if (currentUser.role !== 'admin') return false;
     if (users.length <= 1) return false;
     
@@ -918,10 +917,8 @@ const deleteUser = (id: string) => {
     setUsers(updatedUsers);
     setDeletedUserIds(updatedDeletedIds);
 
-    // 1. सर्वरवर DELETE कॉल (आधीपासून आहे)
     void fetch(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
 
-    // 2. [नवीन जोडायचे] मुख्य शेअर स्टेट आणि deletedUserIds क्लाउडवर सिंक करण्यासाठी:
     void saveSharedState({
       users: updatedUsers,
       deletedUserIds: updatedDeletedIds,
@@ -938,7 +935,6 @@ const deleteUser = (id: string) => {
     return true;
   };
 
-  // Add Meter Reading - क्लाउड डेटाबेस (Neon DB) वर सक्तीने सेव्ह करणारे अचूक फंक्शन
   const addReading = async ({
     blockId,
     meterId,
@@ -1048,7 +1044,6 @@ const deleteUser = (id: string) => {
         : m
     );
 
-    // १. लोकल स्टोरेज आणि स्क्रीनवर तात्काळ अपडेट करणे
     try {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
       localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
@@ -1059,7 +1054,6 @@ const deleteUser = (id: string) => {
     setReadings(updatedReadings);
     setMeters(updatedMeters);
 
-    // २. क्लाउड सर्व्हरवर (Neon DB) सक्तीने डेटा पुश् करणे (रिफ्रेश केल्यावर किंवा मोबाईलवर डेटा कायम राहण्यासाठी)
     try {
       const saved = await saveSharedState({
         readings: updatedReadings,
