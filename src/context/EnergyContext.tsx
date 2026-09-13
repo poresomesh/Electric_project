@@ -516,6 +516,9 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (remote.blocks && remote.blocks.length > 0) setBlocks(remote.blocks);
         if (remote.readings && remote.readings.length > 0) setReadings(remote.readings);
         if (remote.meters && remote.meters.length > 0) setMeters(remote.meters);
+        if (remote.dailyLimits) setDailyLimits(remote.dailyLimits);
+        if (remote.exceedances) setExceedances(remote.exceedances);
+        if (remote.notifications) setNotifications(remote.notifications);
         setLastSyncedAt(new Date());
         setSyncStatus('cloud');
       }
@@ -956,8 +959,7 @@ const visibleBlocks = useMemo(() => {
     }
     return true;
   };
-
-  const addReading = async ({
+const addReading = async ({
     blockId,
     meterId,
     readingDate,
@@ -1066,33 +1068,8 @@ const visibleBlocks = useMemo(() => {
         : m
     );
 
-    try {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
-      localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}meters`, JSON.stringify(updatedMeters));
-      localStorage.setItem('voltwise_meters', JSON.stringify(updatedMeters));
-    } catch (e) {}
-
-    setReadings(updatedReadings);
-    setMeters(updatedMeters);
-
-try {
-      const saved = await saveSharedState({
-        readings: updatedReadings,
-        meters: updatedMeters,
-        version: lastSeenVersionRef.current + 1,
-      });
-      if (saved && saved.version) {
-        lastSeenVersionRef.current = saved.version;
-        setLastSyncedAt(new Date());
-        setSyncStatus('cloud');
-      }
-    } catch (syncErr) {
-      console.error('Failed to sync reading to server database:', syncErr);
-    }
-
-    // --- DAILY LIMIT & EXCEEDANCE CHECK (यहाँ टाका) ---
-    const allReadingsForDay = [newReading, ...readings].filter(
+    // --- DAILY LIMIT & EXCEEDANCE CHECK ---
+    const allReadingsForDay = updatedReadings.filter(
       (r) => r.blockId === blockId && r.readingDate === readingDate
     );
     const totalDayUnits = allReadingsForDay.reduce((sum, r) => sum + r.unitsConsumed, 0);
@@ -1100,14 +1077,16 @@ try {
     const blockLimitObj = dailyLimits.find((l) => l.blockId === blockId);
     const limitUnits = blockLimitObj ? blockLimitObj.dailyLimitUnits : 0;
 
+    let updatedExceedances = [...exceedances];
+    let updatedNotifs = [...notifications];
+
     if (limitUnits > 0 && totalDayUnits > limitUnits) {
       const excessUnits = totalDayUnits - limitUnits;
       const exceedanceId = `exc-${blockId}-${readingDate}`;
       const blockInfo = blocks.find((b) => b.id === blockId);
       const blockDisplayName = blockInfo?.name || blockId;
 
-      const existingExcIndex = exceedances.findIndex((e) => e.blockId === blockId && e.readingDate === readingDate);
-      let updatedExceedances = [...exceedances];
+      const existingExcIndex = updatedExceedances.findIndex((e) => e.blockId === blockId && e.readingDate === readingDate);
       if (existingExcIndex >= 0) {
         updatedExceedances[existingExcIndex] = {
           ...updatedExceedances[existingExcIndex],
@@ -1130,8 +1109,6 @@ try {
           ...updatedExceedances,
         ];
       }
-      setExceedances(updatedExceedances);
-      saveSharedState({ exceedances: updatedExceedances });
 
       const notificationId = `notif-${blockId}-${readingDate}`;
       const assignedUser = users.find((u) => u.assignedBlockId === blockId && u.role === 'block_incharge');
@@ -1147,9 +1124,38 @@ try {
         readByUserIds: [],
       };
 
-      const updatedNotifs = [newNotif, ...notifications.filter((n) => n.id !== notificationId)];
-      setNotifications(updatedNotifs);
-      saveSharedState({ notifications: updatedNotifs });
+      updatedNotifs = [newNotif, ...updatedNotifs.filter((n) => n.id !== notificationId)];
+    }
+
+    try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}readings`, JSON.stringify(updatedReadings));
+      localStorage.setItem('voltwise_readings', JSON.stringify(updatedReadings));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}meters`, JSON.stringify(updatedMeters));
+      localStorage.setItem('voltwise_meters', JSON.stringify(updatedMeters));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}exceedances`, JSON.stringify(updatedExceedances));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}notifications`, JSON.stringify(updatedNotifs));
+    } catch (e) {}
+
+    setReadings(updatedReadings);
+    setMeters(updatedMeters);
+    setExceedances(updatedExceedances);
+    setNotifications(updatedNotifs);
+
+    try {
+      const saved = await saveSharedState({
+        readings: updatedReadings,
+        meters: updatedMeters,
+        exceedances: updatedExceedances,
+        notifications: updatedNotifs,
+        version: lastSeenVersionRef.current + 1,
+      });
+      if (saved && saved.version) {
+        lastSeenVersionRef.current = saved.version;
+        setLastSyncedAt(new Date());
+        setSyncStatus('cloud');
+      }
+    } catch (syncErr) {
+      console.error('Failed to sync reading to server database:', syncErr);
     }
 
     return {
