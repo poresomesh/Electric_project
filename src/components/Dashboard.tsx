@@ -155,105 +155,91 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [readings]);
 
   // ३. तक्त्यातील नोंदी फिल्टर करणे (नवीन ॲड केलेली नोंद तात्काळ दिसणे)
+// ✅ Dashboard.tsx मधील filteredReadings फिक्स:
 const filteredReadings = useMemo(() => {
-    const currentFilter = !isAdmin 
-      ? (assignedBlock?.id || currentUser?.assignedBlockId || selectedBlockFilter) 
-      : selectedBlockFilter;
-
-    return readings.filter((r) => {
-      if (currentFilter !== 'ALL') {
-        const rNorm = normalizeBlock(r.blockId);
-        const activeNorm = normalizeBlock(currentFilter);
-        const assignedNorm = normalizeBlock(assignedBlock?.id || assignedBlock?.code);
-        const targetNorm = assignedNorm || activeNorm;
-
-        if (rNorm !== targetNorm && (r.blockId || '').toLowerCase() !== currentFilter.toLowerCase()) {
-          return false;
-        }
+  return readings.filter((r) => {
+    // जर ॲडमिन असेल आणि त्याने स्पेसिफिक ब्लॉक निवडला असेल तरच फिल्टर कर
+    if (isAdmin && selectedBlockFilter !== 'ALL') {
+      const rNorm = normalizeBlock(r.blockId);
+      const activeNorm = normalizeBlock(selectedBlockFilter);
+      if (rNorm !== activeNorm && (r.blockId || '').toLowerCase() !== selectedBlockFilter.toLowerCase()) {
+        return false;
       }
+    }
+    // नॉन-ॲडमिन असेल तर readings आधीच त्याच्या ब्लॉकचे आहेत, त्यामुळे इथे पुन्हा ब्लॉक फिल्टर लावायची गरज नाही!
 
-      if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
-      if (selectedDateFilter && selectedDateFilter.startsWith('MONTH_')) {
-        const targetMo = selectedDateFilter.replace('MONTH_', '');
-        if (!r.readingDate?.startsWith(targetMo)) return false;
-      }
-
-      if (searchTerm && searchTerm.trim()) {
-        const query = searchTerm.toLowerCase();
-        const blockName = blocks.find((b) => normalizeBlock(b.id) === normalizeBlock(r.blockId))?.name.toLowerCase() || '';
-        return (
-          (r.meterNumber && r.meterNumber.toLowerCase().includes(query)) ||
-          (r.enteredByName && r.enteredByName.toLowerCase().includes(query)) ||
-          (r.notes && r.notes.toLowerCase().includes(query)) ||
-          blockName.includes(query) ||
-          (r.readingDate && r.readingDate.includes(query))
-        );
-      }
-
-      return true;
-    });
-  }, [readings, isAdmin, assignedBlock, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
-
-  // ४. Overall KPIs: Today Units, Month Units, Bill त्वरित अपडेट होणे
-  const kpis = useMemo(() => {
-    const todayDate = getTodayDateStr();
-    const yesterdayDate = getYesterdayDateStr();
-    const targetMonth = getCurrentMonthStr();
-    const currentFilter = !isAdmin && assignedBlock ? assignedBlock.id : selectedBlockFilter;
-    const targetNorm = normalizeBlock(assignedBlock?.code || assignedBlock?.id || currentFilter);
-
-    let relevantReadings = readings;
-    if (currentFilter !== 'ALL') {
-      relevantReadings = readings.filter((r) => {
-        const rNorm = normalizeBlock(r.blockId);
-        return rNorm === targetNorm || (r.blockId || '').toLowerCase() === currentFilter.toLowerCase();
-      });
+    if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
+    if (selectedDateFilter && selectedDateFilter.startsWith('MONTH_')) {
+      const targetMo = selectedDateFilter.replace('MONTH_', '');
+      if (!r.readingDate?.startsWith(targetMo)) return false;
     }
 
-    const todayUnits = relevantReadings
-      .filter((r) => r.readingDate === todayDate)
-      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
+    if (searchTerm && searchTerm.trim()) {
+      const query = searchTerm.toLowerCase();
+      const blockName = blocks.find((b) => normalizeBlock(b.id) === normalizeBlock(r.blockId))?.name.toLowerCase() || '';
+      return (
+        (r.meterNumber && r.meterNumber.toLowerCase().includes(query)) ||
+        (r.enteredByName && r.enteredByName.toLowerCase().includes(query)) ||
+        (r.notes && r.notes.toLowerCase().includes(query)) ||
+        blockName.includes(query) ||
+        (r.readingDate && r.readingDate.includes(query))
+      );
+    }
 
-    const yesterdayUnits = relevantReadings
-      .filter((r) => r.readingDate === yesterdayDate)
-      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
+    return true;
+  });
+}, [readings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
-    const monthUnits = relevantReadings
-      .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
-      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
+// ✅ Dashboard.tsx मधील kpis फिक्स:
+const kpis = useMemo(() => {
+  const todayDate = getTodayDateStr();
+  const yesterdayDate = getYesterdayDateStr();
+  const targetMonth = getCurrentMonthStr();
 
-    const allBlocksMonthUnits = readings
-      .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
-      .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
+  // नॉन-ॲडमिन असेल तर readings आधीच त्याच्या ब्लॉकचे आहेत
+  const relevantReadings = readings;
 
-    const billData = calculateBill({
-      blockId: currentFilter,
-      periodType: 'month',
-      referenceDate: todayDate,
-    });
+  const todayUnits = relevantReadings
+    .filter((r) => r.readingDate === todayDate)
+    .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-    const activeMetersCount = meters.filter((m) => 
-      currentFilter === 'ALL' || normalizeBlock(m.blockId) === targetNorm
-    ).length;
+  const yesterdayUnits = relevantReadings
+    .filter((r) => r.readingDate === yesterdayDate)
+    .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-    const todayCost = todayUnits * tariff.baseRatePerUnit;
+  const monthUnits = relevantReadings
+    .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
+    .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-    const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
-    const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
-    const averageDailyLoad = distinctDates > 0 ? +(totalUnitsForAvg / distinctDates).toFixed(1) : 0;
+  const allBlocksMonthUnits = readings
+    .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
+    .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-    return {
-      todayUnits,
-      yesterdayUnits,
-      todayCost,
-      monthUnits,
-      allBlocksMonthUnits,
-      estimatedBill: billData.totalBill,
-      activeMetersCount,
-      tariffRate: tariff.baseRatePerUnit,
-      averageDailyLoad,
-    };
-  }, [readings, isAdmin, assignedBlock, selectedBlockFilter, meters, calculateBill, tariff]);
+  const billData = calculateBill({
+    blockId: !isAdmin && assignedBlock ? assignedBlock.id : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : 'ALL'),
+    periodType: 'month',
+    referenceDate: todayDate,
+  });
+
+  const activeMetersCount = meters.length;
+  const todayCost = todayUnits * tariff.baseRatePerUnit;
+
+  const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
+  const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
+  const averageDailyLoad = distinctDates > 0 ? +(totalUnitsForAvg / distinctDates).toFixed(1) : 0;
+
+  return {
+    todayUnits,
+    yesterdayUnits,
+    todayCost,
+    monthUnits,
+    allBlocksMonthUnits,
+    estimatedBill: billData.totalBill,
+    activeMetersCount,
+    tariffRate: tariff.baseRatePerUnit,
+    averageDailyLoad,
+  };
+}, [readings, isAdmin, assignedBlock, selectedBlockFilter, meters, calculateBill, tariff]);
 
   // Export readings as CSV
   const handleExportCSV = () => {

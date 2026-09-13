@@ -76,18 +76,18 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
 
   const [selectedBlockId, setSelectedBlockId] = useState<string>('ALL');
 
-  // 🔴 प्रभावी आणि कडक ब्लॉक आयसोलेशन: इनचार्ज असेल तर १००% त्याचाच ब्लॉक लॉक राहील
-  const effectiveBlockId = useMemo(() => {
-    if (!isAdmin) {
-      if (inchargeBlockId) return inchargeBlockId;
-      if (userAssignedBlock?.id) return userAssignedBlock.id;
-      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-        return currentUser.assignedBlockId;
-      }
-      if (blocks && blocks.length > 0) return blocks[0].id;
+// ✅ LiveBilling.tsx मधील effectiveBlockId फिक्स:
+const effectiveBlockId = useMemo(() => {
+  if (!isAdmin) {
+    if (userAssignedBlock?.id) return userAssignedBlock.id;
+    if (inchargeBlockId) return inchargeBlockId;
+    if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      return currentUser.assignedBlockId;
     }
-    return selectedBlockId;
-  }, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, blocks, selectedBlockId]);
+    if (blocks && blocks.length > 0) return blocks[0].id;
+  }
+  return selectedBlockId;
+}, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, blocks, selectedBlockId]);
 
   useEffect(() => {
     if (!isAdmin && inchargeBlockId && selectedBlockId !== inchargeBlockId) {
