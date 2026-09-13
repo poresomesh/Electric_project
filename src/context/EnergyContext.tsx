@@ -1575,7 +1575,7 @@ const getYearWiseData = (blockId?: string, year = getCurrentYear()) => {
     });
   };
 
- const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
+const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
     let targetBlockId = blockIdOrDate;
     let referenceDate = refDateParam || getTodayDateStr();
 
@@ -1584,29 +1584,18 @@ const getYearWiseData = (blockId?: string, year = getCurrentYear()) => {
       targetBlockId = undefined;
     }
 
-    if (!targetBlockId && !isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-      targetBlockId = currentUser.assignedBlockId;
-    }
+    const effectiveBlockId = (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL')
+      ? currentUser.assignedBlockId
+      : targetBlockId;
 
-// थेट आणि अचूक ब्लॉक आयडी / कोड मॅचिंग (ड डिपार्टमेंट्स व वेगळ्या नावांच्या ब्लॉक्ससाठी)
-    let filteredReadingsForComp = readings;
+    // 🔥 थेट visibleReadings वापरणे (incharge साठी आधीच filter झालेलं असतं)
+    let filteredReadingsForComp = visibleReadings;
 
-    if (!isAdmin && !isViewer) {
-      const allowedBlockIds = new Set(visibleBlocks.map((b) => b.id.toLowerCase()));
-      const allowedBlockCodes = new Set(visibleBlocks.map((b) => (b.code || '').toLowerCase()));
-      const allowedBlockNames = new Set(visibleBlocks.map((b) => (b.name || '').toLowerCase()));
-
-      filteredReadingsForComp = readings.filter((r) => {
-        const rBlock = (r.blockId || '').toLowerCase();
-        return allowedBlockIds.has(rBlock) || allowedBlockCodes.has(rBlock) || allowedBlockNames.has(rBlock);
-      });
-    }
-
-    if (targetBlockId && targetBlockId !== 'ALL') {
-      const targetLower = targetBlockId.toLowerCase();
+    if (effectiveBlockId && effectiveBlockId !== 'ALL') {
+      const targetLower = effectiveBlockId.toLowerCase().trim();
       filteredReadingsForComp = filteredReadingsForComp.filter((r) => {
-        const rBlock = (r.blockId || '').toLowerCase();
-        return rBlock === targetLower || rBlock.includes(targetLower) || targetLower.includes(rBlock);
+        const rBlock = (r.blockId || '').toLowerCase().trim();
+        return rBlock === targetLower;
       });
     }
 

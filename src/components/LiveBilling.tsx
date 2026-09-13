@@ -74,20 +74,24 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     return null;
   }, [isAdmin, currentUser, userAssignedBlock, blocks]);
 
-  const [selectedBlockId, setSelectedBlockId] = useState<string>('ALL');
-
-// ✅ LiveBilling.tsx मधील effectiveBlockId फिक्स:
-const effectiveBlockId = useMemo(() => {
-  if (!isAdmin) {
-    if (userAssignedBlock?.id) return userAssignedBlock.id;
-    if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+// ✅ इनचार्जसाठी बायडिफॉल्ट त्याचाच assignedBlockId पकडणे (ALL नाही)
+  const [selectedBlockId, setSelectedBlockId] = useState<string>(() => {
+    if (!isAdmin && currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
       return currentUser.assignedBlockId;
     }
-    // जर assignedBlockId नसेल, तर filtered readings मधला पहिला ब्लॉक पकड:
-    if (blocks && blocks.length > 0) return blocks[0].id;
-  }
-  return selectedBlockId;
-}, [isAdmin, userAssignedBlock, currentUser, blocks, selectedBlockId]);
+    return initialBlockId || 'ALL';
+  });
+
+  const effectiveBlockId = useMemo(() => {
+    if (!isAdmin) {
+      if (inchargeBlockId) return inchargeBlockId;
+      if (userAssignedBlock?.id) return userAssignedBlock.id;
+      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+        return currentUser.assignedBlockId;
+      }
+    }
+    return selectedBlockId;
+  }, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, selectedBlockId]);
 
   useEffect(() => {
     if (!isAdmin && inchargeBlockId && selectedBlockId !== inchargeBlockId) {
