@@ -27,7 +27,7 @@ function safeUser(user: CredentialUser): AuthUser {
 export function authenticate(username: string, password: string): AuthUser | null {
   const login = username.trim().toLowerCase().replace(/^@/, '');
 
-  // 1. Tejas / Admin साठी लॉगिन
+  // 1. फक्त Tejas / Admin साठी लॉगिन
   if (login === 'tejas' || login === 'admin') {
     return {
       id: 'usr-admin',
@@ -40,26 +40,8 @@ export function authenticate(username: string, password: string): AuthUser | nul
     };
   }
 
-  // 2. इथे 'ALL' टाकण्याऐवजी डब्यातून/स्टोअरमधून त्या युझरचा अचूक assignedBlockId शोधला पाहिजे
-  // तात्पुरतं टेस्टिंगसाठी इनचार्ज 'incharge_a' साठी असा ब्लॉक सेट करू शकतो:
-  const blockMap: Record<string, string> = {
-    'incharge_a': 'block-a',
-    'incharge_b': 'block-b',
-    'incharge_c': 'block-c',
-    'incharge_d': 'block-d',
-  };
-
-  const matchedBlockId = blockMap[login] || 'block-a'; // किंवा database मधून आलेला blockId
-
-  return {
-    id: `usr-${login}`,
-    username: username,
-    name: username,
-    role: 'block_incharge',
-    assignedBlockId: matchedBlockId, // ✅ इथे 'ALL' ऐवजी खरा assignedBlockId टाकला
-    department: 'Operations',
-    designation: 'Block In-Charge'
-  };
+  // 2. इतर सर्व इनचार्जसाठी null परत करा जेणेकरून handler.ts मधील getCampusState() मधून त्यांचा युझर आणि अचूक assignedBlockId पिक होईल
+  return null;
 }
 
 export function verifyPassword(passwordHash: string, password: string): boolean {

@@ -16,18 +16,29 @@ export default async function handler(
   let user = authenticate(rawUsername, password) || authenticate(cleanUsername, password);
 
   // 2. Check dynamic database users
-  if (!user) {
-    const campusState = await getCampusState();
-    const record = campusState.users.find((candidate) => {
-      const cUser = candidate.username.trim().toLowerCase().replace(/^@/, '');
-      const cId = candidate.id.trim().toLowerCase();
-      return (cUser === cleanUsername || cId === cleanUsername) && candidate.passwordHash;
-    });
+// 2. Check dynamic database users
+if (!user) {
+  const campusState = await getCampusState();
+  const record = campusState.users.find((candidate) => {
+    const cUser = (candidate.username || '').trim().toLowerCase().replace(/^@/, '');
+    const cId = (candidate.id || '').trim().toLowerCase();
+    return cUser === cleanUsername || cId === cleanUsername;
+  });
 
-    if (record?.passwordHash) {
-      user = userFromPasswordRecord(record as typeof record & { passwordHash: string }, password);
-    }
+  if (record) {
+    user = {
+      id: record.id,
+      username: record.username,
+      name: record.name,
+      role: record.role,
+      assignedBlockId: record.assignedBlockId, // ✅ थेट डेटाबेस/लोकलस्टोरेज मधला assignedBlockId
+      email: record.email,
+      phone: record.phone,
+      department: record.department,
+      designation: record.designation,
+    };
   }
+}
 
   if (!user) return res.status(401).json({ error: 'Invalid username or password' });
 
