@@ -24,10 +24,14 @@ function safeUser(user: CredentialUser | any): AuthUser {
 }
 
 // थेट ऑथेंटिकेशन - ॲडमिन आणि नॉर्मल युझर्स दोघांसाठी
-export function authenticate(username: string, _password: string): AuthUser | null {
+export function authenticate(username: string, password: string): AuthUser | null {
   const login = username.trim().toLowerCase().replace(/^@/, '');
 
+  // 1. फक्त Tejas / Admin साठी लॉगिन
   if (login === 'tejas' || login === 'admin') {
+    if (password !== 'Tejas@') { // इथे पासवर्ड 'Tejas@' सेट केला आहे
+      return null;
+    }
     return {
       id: 'usr-admin',
       username: 'Tejas',
