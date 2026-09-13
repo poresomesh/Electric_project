@@ -586,57 +586,27 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   // अचूक आणि काटेकोर आयडी मॅचिंग लॉजिक (नवीन नावांच्या ब्लॉकमध्ये जुना डेटा जाणे रोखण्यासाठी)
-  // अचूक आणि काटेकोर ब्लॉक आयसोलेशन लॉजिक (इनचार्जसाठी फक्त त्याचाच ब्लॉक, ॲडमिनसाठी सर्व)
 const visibleBlocks = useMemo(() => {
-    if (isAdmin || isViewer) return blocks;
+  if (isAdmin || isViewer) return blocks;
 
-    const uBlockId = (currentUser.assignedBlockId || '').toLowerCase().trim();
-    const uid = (currentUser.id || '').toLowerCase().trim();
-    const uname = (currentUser.username || '').toLowerCase().trim();
-    
-    // स्पेलिंग, स्पेस आणि डॅश काढून नॉर्मलाइज करणारी फंक्शन
-    const normalizeName = (str: string) => str.toLowerCase().replace(/[\s_-]/g, '').trim();
-    const normUBlockId = normalizeName(uBlockId);
+  const assignedId = (currentUser.assignedBlockId || '').trim();
+  const currentUserId = (currentUser.id || '').trim();
 
-    // १. अचूक ID, Code किंवा Incharge ID नुसार मॅच करणे
-    const matched = blocks.filter((b) => {
-      const bId = normalizeName(b.id || '');
-      const bCode = normalizeName(b.code || '');
-      const bName = normalizeName(b.name || '');
-      const bInchargeId = (b.inchargeId || '').toLowerCase().trim();
-      
-      return (
-        bId === normUBlockId ||
-        bCode === normUBlockId ||
-        bName === normUBlockId ||
-        bInchargeId === uid ||
-        bInchargeId === uname
-      );
-    });
+  if (!assignedId || assignedId.toUpperCase() === 'ALL') {
+    // जर assignedId नसेल, तर इनचार्जच्या ID नुसार शोधू
+    return blocks.filter((b) => b.inchargeId === currentUserId);
+  }
 
-    if (matched.length > 0) return matched;
+  // ब्लॉक ID, Code किंवा Incharge ID नुसार मॅच करणे
+  const matched = blocks.filter((b) => {
+    const matchId = (b.id || '').toLowerCase() === assignedId.toLowerCase();
+    const matchCode = (b.code || '').toLowerCase() === assignedId.toLowerCase();
+    const matchIncharge = b.inchargeId === currentUserId;
+    return matchId || matchCode || matchIncharge;
+  });
 
-    // २. पार्शियल किंवा सबस्ट्रिंग मॅचिंग (वेगवेगळ्या नावांच्या ब्लॉक्ससाठी उपयुक्त)
-    if (uBlockId && uBlockId !== 'all') {
-      const found = blocks.find(b => {
-        const bId = normalizeName(b.id || '');
-        const bCode = normalizeName(b.code || '');
-        const bName = normalizeName(b.name || '');
-        return (
-          bId.includes(normUBlockId) || 
-          bCode.includes(normUBlockId) ||
-          bName.includes(normUBlockId) ||
-          normUBlockId.includes(bId) ||
-          normUBlockId.includes(bName)
-        );
-      });
-      if (found) return [found];
-    }
-
-    // ३. सुरक्षित फॉलबॅक: चुकूनही A Block (`blocks[0]`) दाखवण्याऐवजी खालीलप्रमाणे हाताळणे
-    // जर इनचार्ज असेल आणि ब्लॉक सापडला नाही, तर डॅशबोर्ड ब्लաंक राहिल पण चुकीचा ब्लॉक दिसणार नाही
-    return [];
-  }, [blocks, isAdmin, isViewer, currentUser]);
+  return matched;
+}, [blocks, isAdmin, isViewer, currentUser]);
 
   const visibleMeters = useMemo(() => {
     if (isAdmin || isViewer) return meters;
@@ -645,33 +615,24 @@ const visibleBlocks = useMemo(() => {
   }, [meters, visibleBlocks, isAdmin, isViewer]);
 
 const visibleReadings = useMemo(() => {
-    let list = readings;
-    if (!isAdmin && !isViewer) {
-      // सर्व allowed block IDs आणि codes normalized करून सेटमध्ये टाकूया
-      const normalizeStr = (s?: string) => (s || '').toLowerCase().replace(/^(block|blk)[_-]/, '').replace(/[\s_-]/g, '').trim();
-      const allowedKeys = new Set<string>();
+  if (isAdmin || isViewer) return readings;
 
-      visibleBlocks.forEach((b) => {
-        if (b.id) allowedKeys.add(normalizeStr(b.id));
-        if (b.code) allowedKeys.add(normalizeStr(b.code));
-        if (b.name) allowedKeys.add(normalizeStr(b.name));
-      });
+  const allowedIds = new Set(visibleBlocks.map((b) => b.id));
+  const allowedCodes = new Set(visibleBlocks.map((b) => (b.code || '').toLowerCase()));
 
-      list = readings.filter((r) => {
-        const rNorm = normalizeStr(r.blockId);
-        // इथे दोन्ही बाजूंचे normalized स्ट्रिंग किंवा शेवटचे अक्षर मॅच होईल असा चेक टाकला आहे
-        return allowedKeys.has(rNorm) || Array.from(allowedKeys).some(k => k.includes(rNorm) || rNorm.includes(k));
-      });
-    }
+  const list = readings.filter((r) => {
+    const rBlock = r.blockId || '';
+    return allowedIds.has(rBlock) || allowedCodes.has(rBlock.toLowerCase());
+  });
 
-    return [...list].sort((a, b) => {
-      const dateCmp = (b.readingDate || '').localeCompare(a.readingDate || '');
-      if (dateCmp !== 0) return dateCmp;
-      const timeCmp = (b.readingTime || '').localeCompare(a.readingTime || '');
-      if (timeCmp !== 0) return timeCmp;
-      return (b.createdAt || '').localeCompare(a.createdAt || '');
-    });
-  }, [readings, isAdmin, isViewer, visibleBlocks]);
+  return [...list].sort((a, b) => {
+    const dateCmp = (b.readingDate || '').localeCompare(a.readingDate || '');
+    if (dateCmp !== 0) return dateCmp;
+    const timeCmp = (b.readingTime || '').localeCompare(a.readingTime || '');
+    if (timeCmp !== 0) return timeCmp;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
+  });
+}, [readings, isAdmin, isViewer, visibleBlocks]);
 
   const visibleExceedances = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
