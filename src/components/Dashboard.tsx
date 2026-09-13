@@ -44,6 +44,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     blocks,
     meters,
     readings,
+    allReadings,
     tariff,
     currentUser,
     isAdmin,
