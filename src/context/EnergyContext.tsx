@@ -519,6 +519,12 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (remote.dailyLimits) setDailyLimits(remote.dailyLimits);
         if (remote.exceedances) setExceedances(remote.exceedances);
         if (remote.notifications) setNotifications(remote.notifications);
+        if (remote.tariff) setTariff(remote.tariff);
+        if (remote.msebTariffs) setMsebTariffs(remote.msebTariffs);
+        if (remote.msebBlocks && remote.msebBlocks.length > 0) setMsebBlocks(remote.msebBlocks);
+        if (remote.msebReadings) setMsebReadings(remote.msebReadings);
+        if (remote.msebTariffs) setMsebTariffs(remote.msebTariffs);
+        
         setLastSyncedAt(new Date());
         setSyncStatus('cloud');
       }
