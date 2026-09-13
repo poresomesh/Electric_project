@@ -44,6 +44,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     blocks,
     meters,
     readings,
+    visibleReadings,
     allReadings,
     tariff,
     currentUser,
@@ -198,7 +199,7 @@ const kpis = useMemo(() => {
   const yesterdayDate = getYesterdayDateStr();
   const targetMonth = getCurrentMonthStr(); // '2026-09'
 
-  const relevantReadings = readings || [];
+  const relevantReadings = isAdmin ? readings : visibleReadings;
 
   // १. आजचे युनिट्स
   const todayUnits = relevantReadings
