@@ -617,16 +617,32 @@ const visibleBlocks = useMemo(() => {
 const visibleReadings = useMemo(() => {
   if (isAdmin || isViewer) return readings;
 
-  // इनचार्जच्या assignedBlockId सोबत थेट आणि अचूक मॅचिंग करणे
-  const userBlockId = (currentUser.assignedBlockId || '').toLowerCase().trim();
-
-  if (!userBlockId || userBlockId === 'all') {
-    return readings;
+  const assignedId = (currentUser.assignedBlockId || '').trim().toLowerCase();
+  
+  // जर इनचार्जला कोणताही ब्लॉक असाइन नसेल, तर काहीच दाखवणार नाही
+  if (!assignedId || assignedId === 'all') {
+    return [];
   }
 
+  // इनचार्जचा assignedBlockId, code, किंवा inchargeId यांच्याशी जुळणारे readings फाईल करणे
+  const allowedBlockIds = new Set<string>();
+  allowedBlockIds.add(assignedId);
+
+  blocks.forEach((b) => {
+    const isMatchingBlock =
+      (b.id || '').toLowerCase() === assignedId ||
+      (b.code || '').toLowerCase() === assignedId ||
+      (b.inchargeId || '').toLowerCase() === (currentUser.id || '').toLowerCase();
+
+    if (isMatchingBlock) {
+      if (b.id) allowedBlockIds.add(b.id.toLowerCase());
+      if (b.code) allowedBlockIds.add(b.code.toLowerCase());
+    }
+  });
+
   const list = readings.filter((r) => {
-    const readingBlockId = (r.blockId || '').toLowerCase().trim();
-    return readingBlockId === userBlockId;
+    const rBlock = (r.blockId || '').toLowerCase().trim();
+    return allowedBlockIds.has(rBlock);
   });
 
   return [...list].sort((a, b) => {
@@ -636,7 +652,7 @@ const visibleReadings = useMemo(() => {
     if (timeCmp !== 0) return timeCmp;
     return (b.createdAt || '').localeCompare(a.createdAt || '');
   });
-}, [readings, isAdmin, isViewer, currentUser]);
+}, [readings, isAdmin, isViewer, currentUser, blocks]);
 
   const visibleExceedances = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {

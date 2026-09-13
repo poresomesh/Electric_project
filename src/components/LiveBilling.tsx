@@ -82,16 +82,17 @@ export const LiveBilling: React.FC<LiveBillingProps> = ({ initialBlockId }) => {
     return initialBlockId || 'ALL';
   });
 
-  const effectiveBlockId = useMemo(() => {
-    if (!isAdmin) {
-      if (inchargeBlockId) return inchargeBlockId;
-      if (userAssignedBlock?.id) return userAssignedBlock.id;
-      if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
-        return currentUser.assignedBlockId;
-      }
+ const effectiveBlockId = useMemo(() => {
+  if (!isAdmin) {
+    // इनचार्ज असेल तर त्याच्या assignedBlockId व्यतिरिक्त दुसरा कोणताही ब्लॉक अलाउड नाही
+    if (currentUser?.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      return currentUser.assignedBlockId;
     }
-    return selectedBlockId;
-  }, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, selectedBlockId]);
+    if (inchargeBlockId) return inchargeBlockId;
+    if (userAssignedBlock?.id) return userAssignedBlock.id;
+  }
+  return selectedBlockId;
+}, [isAdmin, inchargeBlockId, userAssignedBlock, currentUser, selectedBlockId]);
 
   useEffect(() => {
     if (!isAdmin && inchargeBlockId && selectedBlockId !== inchargeBlockId) {
