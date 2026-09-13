@@ -156,9 +156,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Array.from(set).sort().reverse();
   }, [readings]);
 
+// ✅ ब्लॉक-स्पेसिफिक डेटा फिल्टर करण्यासाठी फक्त 'readings' वापर
 const filteredReadings = useMemo(() => {
-  // ॲडमिन असेल तर readings आणि नॉन-ॲडमिन असेल तर visibleReadings वापरू
-  let list = isAdmin ? readings : (visibleReadings || readings);
+  let list = readings; // <-- 'readings' हा आधीच तुझ्या ब्लॉकचा आहे
 
   if (isAdmin && selectedBlockFilter !== 'ALL') {
     const targetNorm = normalizeBlock(selectedBlockFilter);
@@ -187,41 +187,33 @@ const filteredReadings = useMemo(() => {
   }
 
   return list;
-}, [readings, visibleReadings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
+}, [readings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
-// ✅ Dashboard.tsx मधील अचूक kpis लॉजिक
+
+// ✅ KPIs कॅल्क्युलेशनसाठी हाच 'readings' वापर
 const kpis = useMemo(() => {
-  console.log("Current User Role:", currentUser?.role, "Assigned Block:", currentUser?.assignedBlockId);
-  console.log("Filtered Readings count in Dashboard:", readings?.length);
-  
-  const todayDate = getTodayDateStr(); // '2026-09-13'
+  const todayDate = getTodayDateStr();
   const yesterdayDate = getYesterdayDateStr();
-  const targetMonth = getCurrentMonthStr(); // '2026-09'
+  const targetMonth = getCurrentMonthStr();
 
-  // नॉन-ॲडमिनसाठी visibleReadings आणि ॲडमिनसाठी readings वापरू
-  const relevantReadings = isAdmin ? (readings || []) : (visibleReadings || readings || []);
-
-  // १. आजचे युनिट्स
-  const todayUnits = relevantReadings
+  // तुमच्या स्वतःच्या ब्लॉकचे युनिट्स 'readings' मधून येतील
+  const todayUnits = readings
     .filter((r) => r.readingDate === todayDate)
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  // २. कालचे युनिट्स
-  const yesterdayUnits = relevantReadings
+  const yesterdayUnits = readings
     .filter((r) => r.readingDate === yesterdayDate)
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  // ३. चालू महिन्याचे युनिट्स
-  const monthUnits = relevantReadings
+  const monthUnits = readings
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  // ४. सर्व ब्लॉक्सचे युनिट्स (All Blocks Total)
-  const allBlocksMonthUnits = (allReadings || readings || [])
+  // संपूर्ण फॅसिलिटीच्या टोटलसाठी 'allReadings' वापर
+  const allBlocksMonthUnits = (allReadings || [])
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  // ५. इस्टिमेटेड बिल
   const targetBlockIdForBill = !isAdmin 
     ? (assignedBlock?.id || currentUser?.assignedBlockId || readings[0]?.blockId || 'ALL')
     : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : 'ALL');
@@ -232,9 +224,8 @@ const kpis = useMemo(() => {
     referenceDate: todayDate,
   });
 
-  // ६. डेली ॲव्हरेज लोड (Daily Average Load = एकूण युनिट्स / एकूण दिवसांची संख्या)
-  const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
-  const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
+  const distinctDates = new Set(readings.map((r) => r.readingDate)).size;
+  const totalUnitsForAvg = readings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
   const averageDailyLoad = distinctDates > 0 ? +(totalUnitsForAvg / distinctDates).toFixed(1) : 0;
 
   const todayCost = todayUnits * tariff.baseRatePerUnit;
@@ -250,7 +241,7 @@ const kpis = useMemo(() => {
     tariffRate: tariff.baseRatePerUnit,
     averageDailyLoad,
   };
-}, [readings, allReadings, visibleReadings, isAdmin, assignedBlock, currentUser, selectedBlockFilter, meters, calculateBill, tariff, selectedDateFilter]);
+}, [readings, allReadings, isAdmin, assignedBlock, currentUser, selectedBlockFilter, meters, calculateBill, tariff]);
 
   // Export readings as CSV
   const handleExportCSV = () => {
