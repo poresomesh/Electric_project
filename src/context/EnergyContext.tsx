@@ -1546,23 +1546,25 @@ const visibleBlocks = useMemo(() => {
       targetBlockId = currentUser.assignedBlockId;
     }
 
-    // 🔴 इनचार्ज असेल तर त्याच्या स्वतःच्या ब्लॉकचेच रीडिंग्ज सक्तीने फिल्टर करणे
+// थेट आणि अचूक ब्लॉक आयडी / कोड मॅचिंग (ड डिपार्टमेंट्स व वेगळ्या नावांच्या ब्लॉक्ससाठी)
     let filteredReadingsForComp = readings;
+
     if (!isAdmin && !isViewer) {
       const allowedBlockIds = new Set(visibleBlocks.map((b) => b.id.toLowerCase()));
       const allowedBlockCodes = new Set(visibleBlocks.map((b) => (b.code || '').toLowerCase()));
-      
+      const allowedBlockNames = new Set(visibleBlocks.map((b) => (b.name || '').toLowerCase()));
+
       filteredReadingsForComp = readings.filter((r) => {
         const rBlock = (r.blockId || '').toLowerCase();
-        return allowedBlockIds.has(rBlock) || allowedBlockCodes.has(rBlock);
+        return allowedBlockIds.has(rBlock) || allowedBlockCodes.has(rBlock) || allowedBlockNames.has(rBlock);
       });
     }
 
     if (targetBlockId && targetBlockId !== 'ALL') {
-      const targetNorm = normalizeBlockStr(targetBlockId);
+      const targetLower = targetBlockId.toLowerCase();
       filteredReadingsForComp = filteredReadingsForComp.filter((r) => {
-        const rNorm = normalizeBlockStr(r.blockId);
-        return rNorm === targetNorm || r.blockId.toLowerCase() === targetBlockId.toLowerCase();
+        const rBlock = (r.blockId || '').toLowerCase();
+        return rBlock === targetLower || rBlock.includes(targetLower) || targetLower.includes(rBlock);
       });
     }
 
@@ -1635,7 +1637,7 @@ const visibleBlocks = useMemo(() => {
     };
   };
 
-  
+
   const resetToDefaults = () => {
     if (currentUser.role !== 'admin') return;
     setUsers(INITIAL_USERS);
