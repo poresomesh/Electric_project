@@ -1533,8 +1533,7 @@ const visibleBlocks = useMemo(() => {
     });
   };
 
-  const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
-    // पॅरामिटर्स हँडल करणे (blockId आणि referenceDate दोन्ही सुरक्षितपणे ओळखणे)
+ const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
     let targetBlockId = blockIdOrDate;
     let referenceDate = refDateParam || getTodayDateStr();
 
@@ -1547,17 +1546,23 @@ const visibleBlocks = useMemo(() => {
       targetBlockId = currentUser.assignedBlockId;
     }
 
-    // रीडिंग्ज फिल्टर करणे (ॲडमिनसाठी पूर्ण किंवा विशिष्ट ब्लॉक, इनचार्जसाठी स्वतःचा ब्लॉक)
+    // 🔴 इनचार्ज असेल तर त्याच्या स्वतःच्या ब्लॉकचेच रीडिंग्ज सक्तीने फिल्टर करणे
     let filteredReadingsForComp = readings;
     if (!isAdmin && !isViewer) {
-      filteredReadingsForComp = visibleReadings;
+      const allowedBlockIds = new Set(visibleBlocks.map((b) => b.id.toLowerCase()));
+      const allowedBlockCodes = new Set(visibleBlocks.map((b) => (b.code || '').toLowerCase()));
+      
+      filteredReadingsForComp = readings.filter((r) => {
+        const rBlock = (r.blockId || '').toLowerCase();
+        return allowedBlockIds.has(rBlock) || allowedBlockCodes.has(rBlock);
+      });
     }
 
     if (targetBlockId && targetBlockId !== 'ALL') {
       const targetNorm = normalizeBlockStr(targetBlockId);
       filteredReadingsForComp = filteredReadingsForComp.filter((r) => {
         const rNorm = normalizeBlockStr(r.blockId);
-        return rNorm === targetNorm || r.blockId === targetBlockId;
+        return rNorm === targetNorm || r.blockId.toLowerCase() === targetBlockId.toLowerCase();
       });
     }
 
@@ -1630,6 +1635,7 @@ const visibleBlocks = useMemo(() => {
     };
   };
 
+  
   const resetToDefaults = () => {
     if (currentUser.role !== 'admin') return;
     setUsers(INITIAL_USERS);
