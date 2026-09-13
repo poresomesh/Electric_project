@@ -189,29 +189,35 @@ const filteredReadings = useMemo(() => {
   return list;
 }, [readings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
+// ✅ Dashboard.tsx मधील अचूक kpis लॉजिक
 const kpis = useMemo(() => {
-  const todayDate = getTodayDateStr();
+  const todayDate = getTodayDateStr(); // '2026-09-13'
   const yesterdayDate = getYesterdayDateStr();
-  const targetMonth = getCurrentMonthStr();
+  const targetMonth = getCurrentMonthStr(); // '2026-09'
 
-  const relevantReadings = readings;
+  const relevantReadings = readings || [];
 
+  // १. आजचे युनिट्स
   const todayUnits = relevantReadings
     .filter((r) => r.readingDate === todayDate)
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
+  // २. कालचे युनिट्स
   const yesterdayUnits = relevantReadings
     .filter((r) => r.readingDate === yesterdayDate)
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
+  // ३. चालू महिन्याचे युनिट्स
   const monthUnits = relevantReadings
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  const allBlocksMonthUnits = (allReadings || readings)
+  // ४. सर्व ब्लॉक्सचे युनिट्स (All Blocks Total)
+  const allBlocksMonthUnits = (allReadings || readings || [])
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
+  // ५. इस्टिमेटेड बिल
   const targetBlockIdForBill = !isAdmin 
     ? (assignedBlock?.id || currentUser?.assignedBlockId || readings[0]?.blockId || 'ALL')
     : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : 'ALL');
@@ -222,12 +228,12 @@ const kpis = useMemo(() => {
     referenceDate: todayDate,
   });
 
-  const activeMetersCount = meters.length;
-  const todayCost = todayUnits * tariff.baseRatePerUnit;
-
+  // ६. डेली ॲव्हरेज लोड (Daily Average Load = एकूण युनिट्स / एकूण दिवसांची संख्या)
   const distinctDates = new Set(relevantReadings.map((r) => r.readingDate)).size;
   const totalUnitsForAvg = relevantReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
   const averageDailyLoad = distinctDates > 0 ? +(totalUnitsForAvg / distinctDates).toFixed(1) : 0;
+
+  const todayCost = todayUnits * tariff.baseRatePerUnit;
 
   return {
     todayUnits,
@@ -236,7 +242,7 @@ const kpis = useMemo(() => {
     monthUnits,
     allBlocksMonthUnits,
     estimatedBill: billData.totalBill,
-    activeMetersCount,
+    activeMetersCount: meters.length,
     tariffRate: tariff.baseRatePerUnit,
     averageDailyLoad,
   };
