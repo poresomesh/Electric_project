@@ -1076,7 +1076,7 @@ const visibleBlocks = useMemo(() => {
     setReadings(updatedReadings);
     setMeters(updatedMeters);
 
-    try {
+try {
       const saved = await saveSharedState({
         readings: updatedReadings,
         meters: updatedMeters,
@@ -1089,6 +1089,67 @@ const visibleBlocks = useMemo(() => {
       }
     } catch (syncErr) {
       console.error('Failed to sync reading to server database:', syncErr);
+    }
+
+    // --- DAILY LIMIT & EXCEEDANCE CHECK (यहाँ टाका) ---
+    const allReadingsForDay = [newReading, ...readings].filter(
+      (r) => r.blockId === blockId && r.readingDate === readingDate
+    );
+    const totalDayUnits = allReadingsForDay.reduce((sum, r) => sum + r.unitsConsumed, 0);
+
+    const blockLimitObj = dailyLimits.find((l) => l.blockId === blockId);
+    const limitUnits = blockLimitObj ? blockLimitObj.dailyLimitUnits : 0;
+
+    if (limitUnits > 0 && totalDayUnits > limitUnits) {
+      const excessUnits = totalDayUnits - limitUnits;
+      const exceedanceId = `exc-${blockId}-${readingDate}`;
+      const blockInfo = blocks.find((b) => b.id === blockId);
+      const blockDisplayName = blockInfo?.name || blockId;
+
+      const existingExcIndex = exceedances.findIndex((e) => e.blockId === blockId && e.readingDate === readingDate);
+      let updatedExceedances = [...exceedances];
+      if (existingExcIndex >= 0) {
+        updatedExceedances[existingExcIndex] = {
+          ...updatedExceedances[existingExcIndex],
+          consumedUnits: totalDayUnits,
+          dailyLimitUnits: limitUnits,
+          excessUnits,
+        };
+      } else {
+        updatedExceedances = [
+          {
+            id: exceedanceId,
+            blockId,
+            readingDate,
+            consumedUnits: totalDayUnits,
+            dailyLimitUnits: limitUnits,
+            excessUnits,
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+          },
+          ...updatedExceedances,
+        ];
+      }
+      setExceedances(updatedExceedances);
+      saveSharedState({ exceedances: updatedExceedances });
+
+      const notificationId = `notif-${blockId}-${readingDate}`;
+      const assignedUser = users.find((u) => u.assignedBlockId === blockId && u.role === 'block_incharge');
+      const newNotif: EnergyNotification = {
+        id: notificationId,
+        blockId,
+        userId: assignedUser?.id,
+        type: 'limit_exceeded',
+        title: 'Daily Limit Exceeded',
+        message: `${blockDisplayName} consumed ${totalDayUnits.toLocaleString()} kWh today (Limit: ${limitUnits.toLocaleString()} kWh). Excess: ${excessUnits.toLocaleString()} kWh.`,
+        readingDate,
+        createdAt: new Date().toISOString(),
+        readByUserIds: [],
+      };
+
+      const updatedNotifs = [newNotif, ...notifications.filter((n) => n.id !== notificationId)];
+      setNotifications(updatedNotifs);
+      saveSharedState({ notifications: updatedNotifs });
     }
 
     return {
