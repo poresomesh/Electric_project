@@ -1581,15 +1581,15 @@ const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
       targetBlockId = undefined;
     }
 
-    // 🔥 इनचार्जसाठी सक्तीने त्याचा assignedBlockId वापरणे
-    const effectiveBlockId = (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL')
-      ? currentUser.assignedBlockId
-      : targetBlockId;
+    if (!targetBlockId && !isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      targetBlockId = currentUser.assignedBlockId;
+    }
 
+    // 🔴 इथे पण 'readings' ऐवजी थेट 'visibleReadings' वापरणे
     let filteredReadingsForComp = visibleReadings;
 
-    if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      const targetLower = effectiveBlockId.toLowerCase().trim();
+    if (targetBlockId && targetBlockId !== 'ALL') {
+      const targetLower = targetBlockId.toLowerCase().trim();
       filteredReadingsForComp = filteredReadingsForComp.filter((r) => {
         const rBlock = (r.blockId || '').toLowerCase().trim();
         return rBlock === targetLower;
@@ -1664,7 +1664,6 @@ const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
       },
     };
   };
-
 
   const resetToDefaults = () => {
     if (currentUser.role !== 'admin') return;
