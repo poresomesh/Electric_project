@@ -35,7 +35,7 @@ import {
 } from 'recharts';
 
 export const BillComparison: React.FC = () => {
-const {
+  const {
     blocks,
     tariff,
     isDarkMode,
@@ -60,7 +60,7 @@ const {
   const [editEffectiveTarget, setEditEffectiveTarget] = useState<string>('');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string>('');
 
-// 🔴 युझरनुसार अचूक बिल कंपॅरिजन मिळवणे (इनचार्जसाठी फक्त त्याचा ब्लॉक)
+  // 🔴 युझरनुसार अचूक बिल कंपॅरिजन मिळवणे (इनचार्जसाठी फक्त त्याचा ब्लॉक)
   const effectiveUserBlockId = useMemo(() => {
     if (isAdmin) return 'ALL';
     if (userAssignedBlock?.id) return userAssignedBlock.id;
@@ -70,9 +70,38 @@ const {
     return blocks[0]?.id || 'ALL';
   }, [isAdmin, userAssignedBlock, currentUser, blocks]);
 
-  const comparisonData = useMemo(() => {
+  const rawComparisonData = useMemo(() => {
     return getBillComparison(effectiveUserBlockId);
   }, [getBillComparison, effectiveUserBlockId]);
+
+  // 🔴 Safe fallbacks to prevent Invalid Date & NaN
+  const comparisonData = useMemo(() => {
+    const currentMonthLabel = formatMonthYear(getCurrentMonthStr());
+    return {
+      monthlyList: Array.isArray(rawComparisonData?.monthlyList) ? rawComparisonData.monthlyList.map((item: any) => ({
+        month: item?.month || currentMonthLabel,
+        shortMonth: item?.shortMonth || item?.month || 'Current',
+        bill: Number(item?.bill) || 0,
+        units: Number(item?.units) || 0,
+      })) : [],
+      currentMonthVsPrevMonth: {
+        currentLabel: rawComparisonData?.currentMonthVsPrevMonth?.currentLabel || currentMonthLabel,
+        prevLabel: rawComparisonData?.currentMonthVsPrevMonth?.prevLabel || 'Previous',
+        diffAmount: Number(rawComparisonData?.currentMonthVsPrevMonth?.diffAmount) || 0,
+        diffPercent: Number(rawComparisonData?.currentMonthVsPrevMonth?.diffPercent) || 0,
+        currentBill: Number(rawComparisonData?.currentMonthVsPrevMonth?.currentBill) || 0,
+        prevBill: Number(rawComparisonData?.currentMonthVsPrevMonth?.prevBill) || 0,
+      },
+      currentMonthVsPrevYear: {
+        currentLabel: rawComparisonData?.currentMonthVsPrevYear?.currentLabel || currentMonthLabel,
+        prevYearLabel: rawComparisonData?.currentMonthVsPrevYear?.prevYearLabel || 'Last Year',
+        diffAmount: Number(rawComparisonData?.currentMonthVsPrevYear?.diffAmount) || 0,
+        diffPercent: Number(rawComparisonData?.currentMonthVsPrevYear?.diffPercent) || 0,
+        currentBill: Number(rawComparisonData?.currentMonthVsPrevYear?.currentBill) || 0,
+        prevYearBill: Number(rawComparisonData?.currentMonthVsPrevYear?.prevYearBill) || 0,
+      }
+    };
+  }, [rawComparisonData]);
 
   const { monthlyList, currentMonthVsPrevMonth, currentMonthVsPrevYear } = comparisonData;
 
@@ -82,7 +111,7 @@ const {
     return +(tariff.baseRatePerUnit * taxMultiplier).toFixed(2);
   }, [tariff]);
 
-// 🔴 इनचार्ज असेल तर फक्त त्याचा ब्लॉक, ॲडमिन असेल तर सर्व ब्लॉक्सचा डिस्ट्रीब्यूशन डेटा
+  // 🔴 इनचार्ज असेल तर फक्त त्याचा ब्लॉक, ॲडमिन असेल तर सर्व ब्लॉक्सचा डिस्ट्रीब्यूशन डेटा
   const blockDistribution = useMemo(() => {
     const todayStr = getTodayDateStr();
     const targetBlocks = (!isAdmin && effectiveUserBlockId && effectiveUserBlockId !== 'ALL')
@@ -94,9 +123,9 @@ const {
       return {
         name: b.name,
         code: b.code,
-        units: bBill.totalUnitsConsumed,
-        bill: bBill.totalBill,
-        color: b.color,
+        units: Number(bBill?.totalUnitsConsumed) || 0,
+        bill: Number(bBill?.totalBill) || 0,
+        color: b.color || '#3b82f6',
       };
     });
 
@@ -159,12 +188,12 @@ const {
           <div className="flex justify-between items-center text-slate-300 gap-4">
             <span>Electricity Bill:</span>
             <span className="font-mono font-bold text-amber-400">
-              {tariff.currencySymbol} {data.bill.toLocaleString()}
+              {tariff.currencySymbol} {Number(data.bill || 0).toLocaleString()}
             </span>
           </div>
           <div className="flex justify-between items-center text-slate-400 gap-4">
             <span>Energy Units:</span>
-            <span className="font-mono text-cyan-300">{data.units.toLocaleString()} kWh</span>
+            <span className="font-mono text-cyan-300">{Number(data.units || 0).toLocaleString()} kWh</span>
           </div>
         </div>
       );
@@ -556,8 +585,8 @@ const {
           {/* Dynamic Monthly Pills Footer */}
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 pt-2 border-t border-slate-800">
             {monthlyList.map((m, idx) => (
-              <span key={m.shortMonth} className={idx === monthlyList.length - 1 ? 'text-cyan-400 font-bold' : ''}>
-                {m.shortMonth}: {tariff.currencySymbol}{m.bill.toLocaleString()}
+              <span key={m.shortMonth + idx} className={idx === monthlyList.length - 1 ? 'text-cyan-400 font-bold' : ''}>
+                {m.shortMonth}: {tariff.currencySymbol}{Number(m.bill || 0).toLocaleString()}
               </span>
             ))}
           </div>

@@ -1533,12 +1533,39 @@ const visibleBlocks = useMemo(() => {
     });
   };
 
-  const getBillComparison = (referenceDate = getTodayDateStr()) => {
+  const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
+    // पॅरामिटर्स हँडल करणे (blockId आणि referenceDate दोन्ही सुरक्षितपणे ओळखणे)
+    let targetBlockId = blockIdOrDate;
+    let referenceDate = refDateParam || getTodayDateStr();
+
+    if (blockIdOrDate && blockIdOrDate.includes('-') && blockIdOrDate.length === 10) {
+      referenceDate = blockIdOrDate;
+      targetBlockId = undefined;
+    }
+
+    if (!targetBlockId && !isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
+      targetBlockId = currentUser.assignedBlockId;
+    }
+
+    // रीडिंग्ज फिल्टर करणे (ॲडमिनसाठी पूर्ण किंवा विशिष्ट ब्लॉक, इनचार्जसाठी स्वतःचा ब्लॉक)
+    let filteredReadingsForComp = readings;
+    if (!isAdmin && !isViewer) {
+      filteredReadingsForComp = visibleReadings;
+    }
+
+    if (targetBlockId && targetBlockId !== 'ALL') {
+      const targetNorm = normalizeBlockStr(targetBlockId);
+      filteredReadingsForComp = filteredReadingsForComp.filter((r) => {
+        const rNorm = normalizeBlockStr(r.blockId);
+        return rNorm === targetNorm || r.blockId === targetBlockId;
+      });
+    }
+
     const past6Months = getPastNMonths(6, referenceDate);
 
     const monthlyList = past6Months.map(({ monthStr, label, shortLabel }) => {
-      let monthReadings = visibleReadings.filter((r) => r.readingDate.startsWith(monthStr));
-      const units = monthReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+      const monthReadings = filteredReadingsForComp.filter((r) => r.readingDate && r.readingDate.startsWith(monthStr));
+      const units = monthReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
       const energyCharge = units * tariff.baseRatePerUnit;
       const bill = units > 0
@@ -1558,10 +1585,13 @@ const visibleBlocks = useMemo(() => {
     const currentMonthData = monthlyList[monthlyList.length - 1] || { bill: 0, units: 0, month: 'Current', shortMonth: 'Current' };
     const prevMonthData = monthlyList[monthlyList.length - 2] || { bill: 0, units: 0, month: 'Previous', shortMonth: 'Previous' };
 
-    const [curYear, curMonth] = (referenceDate || getTodayDateStr()).split('-').map(Number);
+    const dateParts = (referenceDate || getTodayDateStr()).split('-').map(Number);
+    const curYear = isNaN(dateParts[0]) ? new Date().getFullYear() : dateParts[0];
+    const curMonth = isNaN(dateParts[1]) ? new Date().getMonth() + 1 : dateParts[1];
+
     const prevYearMonthStr = `${curYear - 1}-${String(curMonth).padStart(2, '0')}`;
-    const prevYearReadings = visibleReadings.filter((r) => r.readingDate.startsWith(prevYearMonthStr));
-    const prevYearUnits = prevYearReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+    const prevYearReadings = filteredReadingsForComp.filter((r) => r.readingDate && r.readingDate.startsWith(prevYearMonthStr));
+    const prevYearUnits = prevYearReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
     const prevYearEnergyCharge = prevYearUnits * tariff.baseRatePerUnit;
     const prevYearBill = prevYearUnits > 0
       ? Math.round(prevYearEnergyCharge + tariff.fixedChargesMonthly + prevYearEnergyCharge * ((tariff.dutyTaxPercent + tariff.fuelSurchargePercent) / 100))
