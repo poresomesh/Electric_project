@@ -648,7 +648,7 @@ const visibleReadings = useMemo(() => {
     let list = readings;
     if (!isAdmin && !isViewer) {
       // सर्व allowed block IDs आणि codes normalized करून सेटमध्ये टाकूया
-      const normalizeStr = (s?: string) => (s || '').toLowerCase().replace(/[\s_-]/g, '').trim();
+      const normalizeStr = (s?: string) => (s || '').toLowerCase().replace(/^(block|blk)[_-]/, '').replace(/[\s_-]/g, '').trim();
       const allowedKeys = new Set<string>();
 
       visibleBlocks.forEach((b) => {
@@ -659,7 +659,8 @@ const visibleReadings = useMemo(() => {
 
       list = readings.filter((r) => {
         const rNorm = normalizeStr(r.blockId);
-        return allowedKeys.has(rNorm);
+        // इथे दोन्ही बाजूंचे normalized स्ट्रिंग किंवा शेवटचे अक्षर मॅच होईल असा चेक टाकला आहे
+        return allowedKeys.has(rNorm) || Array.from(allowedKeys).some(k => k.includes(rNorm) || rNorm.includes(k));
       });
     }
 
