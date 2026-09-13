@@ -617,9 +617,10 @@ const visibleBlocks = useMemo(() => {
 const visibleReadings = useMemo(() => {
   if (isAdmin || isViewer) return readings;
 
-  // इनचार्जच्या assignedBlockId सोबत थेट आणि अचूक मॅचिंग करणे
-  const userBlockId = (currentUser.assignedBlockId || '').toLowerCase().trim();
-  console.log("Current User Assigned Block:", assignedId);
+  // इनचार्जचा assignedBlockId सुरक्षितपणे मिळवणे
+  const userBlockId = (currentUser?.assignedBlockId || '').toLowerCase().trim();
+  
+  console.log("Current User Assigned Block:", userBlockId);
   console.log("All Readings Block IDs:", readings.map(r => r.blockId));
 
   if (!userBlockId || userBlockId === 'all') {
