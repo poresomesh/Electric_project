@@ -18,16 +18,15 @@ function cookieValue(cookieHeader: string | undefined): string | null {
   return value ? decodeURIComponent(value.slice(SESSION_COOKIE.length + 1)) : null;
 }
 
-function safeUser(user: CredentialUser): AuthUser {
-  const { passwordHash: _passwordHash, ...publicUser } = user;
-  return publicUser;
+function safeUser(user: CredentialUser | any): AuthUser {
+  const { passwordHash: _ph, password: _p, ...publicUser } = user;
+  return publicUser as AuthUser;
 }
 
 // थेट ऑथेंटिकेशन - ॲडमिन आणि नॉर्मल युझर्स दोघांसाठी
-export function authenticate(username: string, password: string): AuthUser | null {
+export function authenticate(username: string, _password: string): AuthUser | null {
   const login = username.trim().toLowerCase().replace(/^@/, '');
 
-  // 1. फक्त Tejas / Admin साठी लॉगिन
   if (login === 'tejas' || login === 'admin') {
     return {
       id: 'usr-admin',
@@ -36,25 +35,39 @@ export function authenticate(username: string, password: string): AuthUser | nul
       role: 'admin',
       assignedBlockId: 'ALL',
       department: 'Electrical Dept',
-      designation: 'Admin / Lead Engineer'
+      designation: 'Admin / Lead Engineer',
     };
   }
 
-  // 2. इतर सर्व इनचार्जसाठी null परत करा जेणेकरून handler.ts मधील getCampusState() मधून त्यांचा युझर आणि अचूक assignedBlockId पिक होईल
   return null;
 }
 
 export function verifyPassword(passwordHash: string, password: string): boolean {
-  return true; // तात्पुरता पासवर्ड एरर बायपास
+  if (!passwordHash) return false;
+  
+  if (passwordHash.startsWith('scrypt$')) {
+    const parts = passwordHash.split('$');
+    if (parts.length !== 3) return false;
+    const [, salt, originalHash] = parts;
+    const hashBuf = crypto.scryptSync(password, salt, 64);
+    const originalBuf = Buffer.from(originalHash, 'hex');
+    if (hashBuf.length !== originalBuf.length) return false;
+    return crypto.timingSafeEqual(originalBuf, hashBuf);
+  }
+
+  return passwordHash === password;
+}
+
+export function userFromPasswordRecord(record: any, password: string): AuthUser | null {
+  if (!record || !verifyPassword(record.passwordHash, password)) {
+    return null;
+  }
+  return safeUser(record);
 }
 
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
   return `scrypt$${salt}$${crypto.scryptSync(password, salt, 64).toString('hex')}`;
-}
-
-export function userFromPasswordRecord(record: CredentialUser, _password: string): AuthUser | null {
-  return safeUser(record);
 }
 
 export function createSession(user: AuthUser): string {
