@@ -40,13 +40,23 @@ export function authenticate(username: string, password: string): AuthUser | nul
     };
   }
 
-  // 2. सर्व ब्लॉक इनचार्जसाठी थेट लॉगिन (पासवर्ड SOL@13 किंवा कोणताही पासवर्ड चालेल)
+  // 2. इथे 'ALL' टाकण्याऐवजी डब्यातून/स्टोअरमधून त्या युझरचा अचूक assignedBlockId शोधला पाहिजे
+  // तात्पुरतं टेस्टिंगसाठी इनचार्ज 'incharge_a' साठी असा ब्लॉक सेट करू शकतो:
+  const blockMap: Record<string, string> = {
+    'incharge_a': 'block-a',
+    'incharge_b': 'block-b',
+    'incharge_c': 'block-c',
+    'incharge_d': 'block-d',
+  };
+
+  const matchedBlockId = blockMap[login] || 'block-a'; // किंवा database मधून आलेला blockId
+
   return {
     id: `usr-${login}`,
     username: username,
     name: username,
     role: 'block_incharge',
-    assignedBlockId: 'ALL',
+    assignedBlockId: matchedBlockId, // ✅ इथे 'ALL' ऐवजी खरा assignedBlockId टाकला
     department: 'Operations',
     designation: 'Block In-Charge'
   };
