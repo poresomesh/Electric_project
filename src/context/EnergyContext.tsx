@@ -1338,7 +1338,7 @@ const addReading = async ({
     saveSharedState({ tariff: newTariff });
   };
 
-  const calculateBill = ({
+const calculateBill = ({
     blockId,
     periodType,
     referenceDate = getTodayDateStr(),
@@ -1347,6 +1347,7 @@ const addReading = async ({
     periodType: 'day' | 'week' | 'month' | 'year';
     referenceDate?: string;
   }): BillCalculation => {
+    // 🔥 जर युझर इनचार्ज असेल, तर त्याचा assignedBlockId सक्तीने वापरणे
     let effectiveBlockId = blockId;
     if (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
       effectiveBlockId = currentUser.assignedBlockId;
@@ -1354,16 +1355,12 @@ const addReading = async ({
       effectiveBlockId = 'ALL';
     }
 
-    let filteredReadings = readings;
+    // 🔥 readings ऐवजी थेट visibleReadings वापरणे (जे इनचार्जच्या ब्लॉकनुसार आधीच फिल्टर झालेलं असतं)
+    let filteredReadings = visibleReadings;
 
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      const targetLetter = normalizeBlockStr(effectiveBlockId);
-      filteredReadings = readings.filter((r) => {
-        const rLetter = normalizeBlockStr(r.blockId);
-        return rLetter === targetLetter || (r.blockId || '').toLowerCase() === effectiveBlockId?.toLowerCase();
-      });
-    } else if (!isAdmin) {
-      filteredReadings = visibleReadings;
+      const targetLower = effectiveBlockId.toLowerCase().trim();
+      filteredReadings = filteredReadings.filter((r) => (r.blockId || '').toLowerCase().trim() === targetLower);
     }
 
     const refDate = new Date(referenceDate);
@@ -1584,11 +1581,11 @@ const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
       targetBlockId = undefined;
     }
 
+    // 🔥 इनचार्जसाठी सक्तीने त्याचा assignedBlockId वापरणे
     const effectiveBlockId = (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL')
       ? currentUser.assignedBlockId
       : targetBlockId;
 
-    // 🔥 थेट visibleReadings वापरणे (incharge साठी आधीच filter झालेलं असतं)
     let filteredReadingsForComp = visibleReadings;
 
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
