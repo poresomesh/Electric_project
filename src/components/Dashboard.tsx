@@ -154,28 +154,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Array.from(set).sort().reverse();
   }, [readings]);
 
-  // ३. तक्त्यातील नोंदी फिल्टर करणे (नवीन ॲड केलेली नोंद तात्काळ दिसणे)
 // ✅ Dashboard.tsx मधील filteredReadings फिक्स:
 const filteredReadings = useMemo(() => {
-  return readings.filter((r) => {
-    // जर ॲडमिन असेल आणि त्याने स्पेसिफिक ब्लॉक निवडला असेल तरच फिल्टर कर
-    if (isAdmin && selectedBlockFilter !== 'ALL') {
-      const rNorm = normalizeBlock(r.blockId);
-      const activeNorm = normalizeBlock(selectedBlockFilter);
-      if (rNorm !== activeNorm && (r.blockId || '').toLowerCase() !== selectedBlockFilter.toLowerCase()) {
-        return false;
-      }
-    }
-    // नॉन-ॲडमिन असेल तर readings आधीच त्याच्या ब्लॉकचे आहेत, त्यामुळे इथे पुन्हा ब्लॉक फिल्टर लावायची गरज नाही!
+  // जर युझर ॲडमिन नसेल, तर Context मधून आलेला `readings` (जो आधीच इनचार्जच्या ब्लॉकनुसार फिल्टर झालेला असतो) तोच सरळ वापर!
+  let list = readings;
 
-    if (selectedDateFilter === 'TODAY' && r.readingDate !== getTodayDateStr()) return false;
-    if (selectedDateFilter && selectedDateFilter.startsWith('MONTH_')) {
-      const targetMo = selectedDateFilter.replace('MONTH_', '');
-      if (!r.readingDate?.startsWith(targetMo)) return false;
-    }
+  if (isAdmin && selectedBlockFilter !== 'ALL') {
+    const targetNorm = normalizeBlock(selectedBlockFilter);
+    list = list.filter((r) => normalizeBlock(r.blockId) === targetNorm || r.blockId === selectedBlockFilter);
+  }
 
-    if (searchTerm && searchTerm.trim()) {
-      const query = searchTerm.toLowerCase();
+  if (selectedDateFilter === 'TODAY') {
+    list = list.filter((r) => r.readingDate === getTodayDateStr());
+  } else if (selectedDateFilter && selectedDateFilter.startsWith('MONTH_')) {
+    const targetMo = selectedDateFilter.replace('MONTH_', '');
+    list = list.filter((r) => r.readingDate?.startsWith(targetMo));
+  }
+
+  if (searchTerm && searchTerm.trim()) {
+    const query = searchTerm.toLowerCase();
+    list = list.filter((r) => {
       const blockName = blocks.find((b) => normalizeBlock(b.id) === normalizeBlock(r.blockId))?.name.toLowerCase() || '';
       return (
         (r.meterNumber && r.meterNumber.toLowerCase().includes(query)) ||
@@ -184,10 +182,10 @@ const filteredReadings = useMemo(() => {
         blockName.includes(query) ||
         (r.readingDate && r.readingDate.includes(query))
       );
-    }
+    });
+  }
 
-    return true;
-  });
+  return list;
 }, [readings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
 // ✅ Dashboard.tsx मधील kpis फिक्स:
@@ -196,7 +194,7 @@ const kpis = useMemo(() => {
   const yesterdayDate = getYesterdayDateStr();
   const targetMonth = getCurrentMonthStr();
 
-  // नॉन-ॲडमिन असेल तर readings आधीच त्याच्या ब्लॉकचे आहेत
+  // readings हा array नॉन-ॲडमिनसाठी आधीच Context मधୁन फिल्टर्ड येतो
   const relevantReadings = readings;
 
   const todayUnits = relevantReadings
@@ -211,12 +209,16 @@ const kpis = useMemo(() => {
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  const allBlocksMonthUnits = readings
+  const allBlocksMonthUnits = allReadings
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
+  const targetBlockIdForBill = isAdmin 
+    ? (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : 'ALL')
+    : (userAssignedBlock?.id || currentUser?.assignedBlockId || readings[0]?.blockId || 'ALL');
+
   const billData = calculateBill({
-    blockId: !isAdmin && assignedBlock ? assignedBlock.id : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : 'ALL'),
+    blockId: targetBlockIdForBill,
     periodType: 'month',
     referenceDate: todayDate,
   });
@@ -239,7 +241,7 @@ const kpis = useMemo(() => {
     tariffRate: tariff.baseRatePerUnit,
     averageDailyLoad,
   };
-}, [readings, isAdmin, assignedBlock, selectedBlockFilter, meters, calculateBill, tariff]);
+}, [readings, allReadings, isAdmin, userAssignedBlock, currentUser, selectedBlockFilter, meters, calculateBill, tariff]);
 
   // Export readings as CSV
   const handleExportCSV = () => {
