@@ -1431,18 +1431,16 @@ const addReading = async ({
       readingsCount: filteredReadings.length,
     };
   };
-
-  const getDayWiseData = (blockId?: string, date = getTodayDateStr()) => {
-    const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
+const getDayWiseData = (blockId?: string, date = getTodayDateStr()) => {
+    const effectiveBlockId = (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL')
       ? currentUser.assignedBlockId
       : blockId;
 
     let dayReadings = visibleReadings.filter((r) => r.readingDate === date);
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      const targetNorm = normalizeBlockStr(effectiveBlockId);
-      dayReadings = dayReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
+      dayReadings = dayReadings.filter((r) => r.blockId === effectiveBlockId);
     }
-    const totalDayUnits = dayReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+    const totalDayUnits = dayReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
     const timeSlots = [
       '00:00', '02:00', '04:00', '06:00', '08:00', '10:00',
@@ -1473,7 +1471,7 @@ const addReading = async ({
   };
 
   const getWeekWiseData = (blockId?: string, referenceDate = getTodayDateStr()) => {
-    const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
+    const effectiveBlockId = (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL')
       ? currentUser.assignedBlockId
       : blockId;
 
@@ -1489,11 +1487,10 @@ const addReading = async ({
 
       let dayReadings = visibleReadings.filter((r) => r.readingDate === dateStr);
       if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-        const targetNorm = normalizeBlockStr(effectiveBlockId);
-        dayReadings = dayReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
+        dayReadings = dayReadings.filter((r) => r.blockId === effectiveBlockId);
       }
 
-      const units = dayReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+      const units = dayReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
       result.push({
         day: dayName,
         date: dateStr.slice(5),
@@ -1505,16 +1502,16 @@ const addReading = async ({
     return result;
   };
 
-  const getMonthWiseData = (blockId?: string, referenceDate = getTodayDateStr()) => {
-    const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
+const getMonthWiseData = (blockId?: string, referenceDate = getTodayDateStr()) => {
+    const effectiveBlockId = (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL')
       ? currentUser.assignedBlockId
       : blockId;
 
     const targetMonth = referenceDate.slice(0, 7) || getCurrentMonthStr();
-    let monthReadings = visibleReadings.filter((r) => r.readingDate.startsWith(targetMonth));
+    let monthReadings = visibleReadings.filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth));
+    
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-      const targetNorm = normalizeBlockStr(effectiveBlockId);
-      monthReadings = monthReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
+      monthReadings = monthReadings.filter((r) => r.blockId === effectiveBlockId);
     }
 
     const refDateObj = new Date(referenceDate);
@@ -1534,7 +1531,7 @@ const addReading = async ({
         return day >= w.startDay && day <= w.endDay;
       });
 
-      const units = wReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+      const units = wReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
       return {
         period: w.period,
         units,
@@ -1543,8 +1540,8 @@ const addReading = async ({
     });
   };
 
-  const getYearWiseData = (blockId?: string, year = getCurrentYear()) => {
-    const effectiveBlockId = (isBlockIncharge && currentUser.assignedBlockId)
+const getYearWiseData = (blockId?: string, year = getCurrentYear()) => {
+    const effectiveBlockId = (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL')
       ? currentUser.assignedBlockId
       : blockId;
 
@@ -1554,13 +1551,12 @@ const addReading = async ({
       const monthNum = String(idx + 1).padStart(2, '0');
       const targetPrefix = `${year}-${monthNum}`;
 
-      let monthReadings = visibleReadings.filter((r) => r.readingDate.startsWith(targetPrefix));
+      let monthReadings = visibleReadings.filter((r) => r.readingDate && r.readingDate.startsWith(targetPrefix));
       if (effectiveBlockId && effectiveBlockId !== 'ALL') {
-        const targetNorm = normalizeBlockStr(effectiveBlockId);
-        monthReadings = monthReadings.filter((r) => normalizeBlockStr(r.blockId) === targetNorm || r.blockId === effectiveBlockId);
+        monthReadings = monthReadings.filter((r) => r.blockId === effectiveBlockId);
       }
 
-      const units = monthReadings.reduce((sum, r) => sum + r.unitsConsumed, 0);
+      const units = monthReadings.reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
       const energyCharge = units * tariff.baseRatePerUnit;
       const bill = units > 0
         ? Math.round(energyCharge + tariff.fixedChargesMonthly + energyCharge * ((tariff.dutyTaxPercent + tariff.fuelSurchargePercent) / 100))
