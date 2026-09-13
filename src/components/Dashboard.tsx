@@ -155,9 +155,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Array.from(set).sort().reverse();
   }, [readings]);
 
-// ✅ Dashboard.tsx मधील filteredReadings फिक्स:
+// ✅ Dashboard.tsx मधील readings आणि kpis अचूक फिक्स
 const filteredReadings = useMemo(() => {
-  // जर युझर ॲडमिन नसेल, तर Context मधून आलेला `readings` (जो आधीच इनचार्जच्या ब्लॉकनुसार फिल्टर झालेला असतो) तोच सरळ वापर!
+  // नॉन-ॲडमिन युझर असेल तर Context मधील readings आधीच त्याच्या ब्लॉकचे फिल्टर केलेले असतात
   let list = readings;
 
   if (isAdmin && selectedBlockFilter !== 'ALL') {
@@ -189,13 +189,11 @@ const filteredReadings = useMemo(() => {
   return list;
 }, [readings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
-// ✅ Dashboard.tsx मधील kpis फिक्स (User & Admin दोन्हीसाठी अचूक)
 const kpis = useMemo(() => {
   const todayDate = getTodayDateStr();
   const yesterdayDate = getYesterdayDateStr();
   const targetMonth = getCurrentMonthStr();
 
-  // नॉन-ॲडमिन असेल तर readings आधीच त्याच्या ब्लॉकचे आहेत
   const relevantReadings = readings;
 
   const todayUnits = relevantReadings
@@ -210,13 +208,12 @@ const kpis = useMemo(() => {
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  const allBlocksMonthUnits = allReadings
+  const allBlocksMonthUnits = (allReadings || readings)
     .filter((r) => r.readingDate && r.readingDate.startsWith(targetMonth))
     .reduce((sum, r) => sum + (Number(r.unitsConsumed) || 0), 0);
 
-  // ब्लॉक आयडी अचूक सिलेक्ट करणे (युझर असेल तर त्याचा assignedBlockId, ॲडमिन असेल तर filter किंवा ALL)
   const targetBlockIdForBill = !isAdmin 
-    ? (assignedBlock?.id || currentUser?.assignedBlockId || readings[0]?.blockId)
+    ? (assignedBlock?.id || currentUser?.assignedBlockId || readings[0]?.blockId || 'ALL')
     : (selectedBlockFilter !== 'ALL' ? selectedBlockFilter : 'ALL');
 
   const billData = calculateBill({
