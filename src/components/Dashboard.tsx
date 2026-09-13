@@ -46,6 +46,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     readings,
     visibleReadings,
     allReadings,
+    getDayWiseData,      // <--- हे ॲड कर
+  getWeekWiseData,     // <--- हे ॲड कर
+  getMonthWiseData,    // <--- हे ॲड कर
+  getBillComparison,
     tariff,
     currentUser,
     isAdmin,
@@ -190,6 +194,21 @@ const filteredReadings = useMemo(() => {
 }, [readings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
 
+// ✅ इनचार्जचा किंवा ॲडमिनने निवडलेला ब्लॉक ओळखण्यासाठी
+  const targetBlockId = useMemo(() => {
+    if (isAdmin) {
+      return selectedBlockFilter !== 'ALL' ? selectedBlockFilter : undefined;
+    }
+    return assignedBlock?.id || currentUser?.assignedBlockId || readings[0]?.blockId;
+  }, [isAdmin, selectedBlockFilter, assignedBlock, currentUser, readings]);
+
+  // ✅ ग्राफ्स आणि बिलसाठी या ब्लॉकचा डेटा फेच करू
+  const dayWiseData = useMemo(() => getDayWiseData(targetBlockId), [getDayWiseData, targetBlockId]);
+  const weekWiseData = useMemo(() => getWeekWiseData(targetBlockId), [getWeekWiseData, targetBlockId]);
+  const monthWiseData = useMemo(() => getMonthWiseData(targetBlockId), [getMonthWiseData, targetBlockId]);
+  const billComparisonData = useMemo(() => getBillComparison ? getBillComparison(targetBlockId) : [], [getBillComparison, targetBlockId]);
+
+
 // ✅ KPIs कॅल्क्युलेशनसाठी हाच 'readings' वापर
 const kpis = useMemo(() => {
   const todayDate = getTodayDateStr();
@@ -306,7 +325,7 @@ const kpis = useMemo(() => {
 
       {/* Weekly Graph if incharge */}
       {!isAdmin && assignedBlock && (
-        <EnergyGraphs initialBlockId={assignedBlock.id} weeklyLineOnly />
+        <EnergyGraphs initialBlockId={targetBlockId} weeklyLineOnly />
       )}
 
       {/* Top Banner & Block Filter Bar */}
