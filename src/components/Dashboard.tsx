@@ -199,7 +199,8 @@ const kpis = useMemo(() => {
   const yesterdayDate = getYesterdayDateStr();
   const targetMonth = getCurrentMonthStr(); // '2026-09'
 
-  const relevantReadings = isAdmin ? readings : visibleReadings;
+  const relevantReadings = isAdmin ? (readings || []) : (visibleReadings || readings || []);
+  const list = relevantReadings.filter(...)
 
   // १. आजचे युनिट्स
   const todayUnits = relevantReadings
