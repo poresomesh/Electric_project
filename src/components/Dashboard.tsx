@@ -191,6 +191,9 @@ const filteredReadings = useMemo(() => {
 
 // ✅ Dashboard.tsx मधील अचूक kpis लॉजिक
 const kpis = useMemo(() => {
+
+  console.log("Current User Role:", currentUser?.role, "Assigned Block:", currentUser?.assignedBlockId);
+  console.log("Filtered Readings count in Dashboard:", readings?.length);
   const todayDate = getTodayDateStr(); // '2026-09-13'
   const yesterdayDate = getYesterdayDateStr();
   const targetMonth = getCurrentMonthStr(); // '2026-09'
