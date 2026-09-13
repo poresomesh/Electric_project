@@ -1350,7 +1350,6 @@ const calculateBill = ({
     periodType: 'day' | 'week' | 'month' | 'year';
     referenceDate?: string;
   }): BillCalculation => {
-    // 🔥 जर युझर इनचार्ज असेल, तर त्याचा assignedBlockId सक्तीने वापरणे
     let effectiveBlockId = blockId;
     if (!isAdmin && currentUser.assignedBlockId && currentUser.assignedBlockId !== 'ALL') {
       effectiveBlockId = currentUser.assignedBlockId;
@@ -1358,13 +1357,14 @@ const calculateBill = ({
       effectiveBlockId = 'ALL';
     }
 
-    // 🔥 readings ऐवजी थेट visibleReadings वापरणे (जे इनचार्जच्या ब्लॉकनुसार आधीच फिल्टर झालेलं असतं)
+    // 🔥 'readings' ऐवजी सक्तीने 'visibleReadings' वापरणे
     let filteredReadings = visibleReadings;
 
     if (effectiveBlockId && effectiveBlockId !== 'ALL') {
       const targetLower = effectiveBlockId.toLowerCase().trim();
       filteredReadings = filteredReadings.filter((r) => (r.blockId || '').toLowerCase().trim() === targetLower);
     }
+    // ... उरलेला calculateBill चा कोड तसाच ठेव
 
     const refDate = new Date(referenceDate);
     const targetMonth = referenceDate.slice(0, 7) || getCurrentMonthStr();
@@ -1575,6 +1575,7 @@ const getYearWiseData = (blockId?: string, year = getCurrentYear()) => {
     });
   };
 
+  
 const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
     let targetBlockId = blockIdOrDate;
     let referenceDate = refDateParam || getTodayDateStr();
@@ -1588,7 +1589,7 @@ const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
       targetBlockId = currentUser.assignedBlockId;
     }
 
-    // 🔴 इथे पण 'readings' ऐवजी थेट 'visibleReadings' वापरणे
+    // 🔥 'readings' ऐवजी थेट 'visibleReadings' वापरणे
     let filteredReadingsForComp = visibleReadings;
 
     if (targetBlockId && targetBlockId !== 'ALL') {
@@ -1598,6 +1599,7 @@ const getBillComparison = (blockIdOrDate?: string, refDateParam?: string) => {
         return rBlock === targetLower;
       });
     }
+    // ... उरलेला getBillComparison चा कोड तसाच ठेव
 
     const past6Months = getPastNMonths(6, referenceDate);
 
