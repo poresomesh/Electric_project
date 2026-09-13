@@ -156,10 +156,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return Array.from(set).sort().reverse();
   }, [readings]);
 
-// ✅ Dashboard.tsx मधील readings आणि kpis अचूक फिक्स
 const filteredReadings = useMemo(() => {
-  // नॉन-ॲडमिन युझर असेल तर Context मधील readings आधीच त्याच्या ब्लॉकचे फिल्टर केलेले असतात
-  let list = readings;
+  // ॲडमिन असेल तर readings आणि नॉन-ॲडमिन असेल तर visibleReadings वापरू
+  let list = isAdmin ? readings : (visibleReadings || readings);
 
   if (isAdmin && selectedBlockFilter !== 'ALL') {
     const targetNorm = normalizeBlock(selectedBlockFilter);
@@ -188,19 +187,19 @@ const filteredReadings = useMemo(() => {
   }
 
   return list;
-}, [readings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
+}, [readings, visibleReadings, isAdmin, selectedBlockFilter, selectedDateFilter, searchTerm, blocks]);
 
 // ✅ Dashboard.tsx मधील अचूक kpis लॉजिक
 const kpis = useMemo(() => {
-
   console.log("Current User Role:", currentUser?.role, "Assigned Block:", currentUser?.assignedBlockId);
   console.log("Filtered Readings count in Dashboard:", readings?.length);
+  
   const todayDate = getTodayDateStr(); // '2026-09-13'
   const yesterdayDate = getYesterdayDateStr();
   const targetMonth = getCurrentMonthStr(); // '2026-09'
 
+  // नॉन-ॲडमिनसाठी visibleReadings आणि ॲडमिनसाठी readings वापरू
   const relevantReadings = isAdmin ? (readings || []) : (visibleReadings || readings || []);
-  const list = relevantReadings.filter(...)
 
   // १. आजचे युनिट्स
   const todayUnits = relevantReadings
@@ -251,7 +250,7 @@ const kpis = useMemo(() => {
     tariffRate: tariff.baseRatePerUnit,
     averageDailyLoad,
   };
-}, [readings, allReadings, isAdmin, assignedBlock, currentUser, selectedBlockFilter, meters, calculateBill, tariff]);
+}, [readings, allReadings, visibleReadings, isAdmin, assignedBlock, currentUser, selectedBlockFilter, meters, calculateBill, tariff, selectedDateFilter]);
 
   // Export readings as CSV
   const handleExportCSV = () => {
