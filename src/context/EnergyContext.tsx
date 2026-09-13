@@ -524,7 +524,7 @@ export const EnergyProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         if (remote.msebBlocks && remote.msebBlocks.length > 0) setMsebBlocks(remote.msebBlocks);
         if (remote.msebReadings) setMsebReadings(remote.msebReadings);
         if (remote.msebTariffs) setMsebTariffs(remote.msebTariffs);
-        
+
         setLastSyncedAt(new Date());
         setSyncStatus('cloud');
       }
@@ -644,15 +644,22 @@ const visibleBlocks = useMemo(() => {
     return meters.filter((m) => allowedBlockIds.has((m.blockId || '').toLowerCase()));
   }, [meters, visibleBlocks, isAdmin, isViewer]);
 
-  const visibleReadings = useMemo(() => {
+const visibleReadings = useMemo(() => {
     let list = readings;
     if (!isAdmin && !isViewer) {
-      const allowedBlockIds = new Set(visibleBlocks.map(b => b.id.toLowerCase()));
-      const allowedBlockCodes = new Set(visibleBlocks.map(b => (b.code || '').toLowerCase()));
-      
+      // सर्व allowed block IDs आणि codes normalized करून सेटमध्ये टाकूया
+      const normalizeStr = (s?: string) => (s || '').toLowerCase().replace(/[\s_-]/g, '').trim();
+      const allowedKeys = new Set<string>();
+
+      visibleBlocks.forEach((b) => {
+        if (b.id) allowedKeys.add(normalizeStr(b.id));
+        if (b.code) allowedKeys.add(normalizeStr(b.code));
+        if (b.name) allowedKeys.add(normalizeStr(b.name));
+      });
+
       list = readings.filter((r) => {
-        const rBlock = (r.blockId || '').toLowerCase();
-        return allowedBlockIds.has(rBlock) || allowedBlockCodes.has(rBlock);
+        const rNorm = normalizeStr(r.blockId);
+        return allowedKeys.has(rNorm);
       });
     }
 
