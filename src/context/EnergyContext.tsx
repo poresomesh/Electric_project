@@ -617,12 +617,16 @@ const visibleBlocks = useMemo(() => {
 const visibleReadings = useMemo(() => {
   if (isAdmin || isViewer) return readings;
 
-  const allowedIds = new Set(visibleBlocks.map((b) => b.id));
-  const allowedCodes = new Set(visibleBlocks.map((b) => (b.code || '').toLowerCase()));
+  // इनचार्जच्या assignedBlockId सोबत थेट आणि अचूक मॅचिंग करणे
+  const userBlockId = (currentUser.assignedBlockId || '').toLowerCase().trim();
+
+  if (!userBlockId || userBlockId === 'all') {
+    return readings;
+  }
 
   const list = readings.filter((r) => {
-    const rBlock = r.blockId || '';
-    return allowedIds.has(rBlock) || allowedCodes.has(rBlock.toLowerCase());
+    const readingBlockId = (r.blockId || '').toLowerCase().trim();
+    return readingBlockId === userBlockId;
   });
 
   return [...list].sort((a, b) => {
@@ -632,7 +636,7 @@ const visibleReadings = useMemo(() => {
     if (timeCmp !== 0) return timeCmp;
     return (b.createdAt || '').localeCompare(a.createdAt || '');
   });
-}, [readings, isAdmin, isViewer, visibleBlocks]);
+}, [readings, isAdmin, isViewer, currentUser]);
 
   const visibleExceedances = useMemo(() => {
     if (isAdmin || isViewer || !currentUser.assignedBlockId || currentUser.assignedBlockId === 'ALL') {
