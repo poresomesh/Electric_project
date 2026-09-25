@@ -1,18 +1,5 @@
-import { handleCampusStateRequest } from '../server/campusStore.ts';
+import { handleCampusStateRequest, getCampusState, putCampusState } from '../server/campusStore.ts';
 import { getSessionUser } from '../server/auth.ts';
-
-async function syncReadingToGoogleSheet(readingData: any) {
-  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby5omkKfa_WN1XIScQTNlfDedChl22agSzNefFm_AOJgU3Ov7sLz-F7UH4WuiNpReLPow/exec';
-  try {
-    await fetch(WEB_APP_URL, {
-      method: 'POST',
-      body: JSON.stringify(readingData),
-      headers: { 'Content-Type': 'application/json' }
-    });
-  } catch (error) {
-    console.error('Google Sheet Sync Error:', error);
-  }
-}
 
 type VercelRequest = {
   method?: string;
@@ -35,17 +22,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? ((typeof req.body === 'string' ? JSON.parse(req.body) : req.body) as Record<string, unknown>)
       : undefined;
 
-  // गुगल शीटमधून ब्लॉक-वाईज डेटा आल्यावर इथे हँडल होईल
+  // गुगल शीटमधून ब्लॉक-वाईज डेटा आल्यावर इथे डेटाबेसमध्ये सेव्ह होईल
   if (method === 'POST' && incoming && incoming.type === 'block_reading_sync') {
     try {
       const { date, blockName, currentReading } = incoming;
       
       console.log(`Syncing -> Block: ${blockName}, Date: ${date}, Reading: ${currentReading}`);
       
-      // TODO: इथे तुझ्या डेटाबेसची (Neon DB) इन्सर्ट क्वेरी टाक, 
-      // जिथे blockName, date आणि currentReading सेव्ह होईल.
+      // 1. सध्याचा स्टेट लोड करणे
+      const currentState = await getCampusState();
       
-      return res.status(200).json({ status: "success", message: "Block reading synced" });
+      // 2. ब्लॉकच्या नावावरून योग्य blockId शोधणे
+      const targetBlock = currentState.blocks.find(b => b.name.toLowerCase() === String(blockName).toLowerCase());
+      const blockId = targetBlock ? targetBlock.id : 'blk-a';
+      
+      // 3. नवीन रीडिंग तयार करणे
+      const newReading = {
+        id: `sheet-${date}-${blockId}-${Date.now()}`,
+        blockId: blockId,
+        date: String(date),
+        current: Number(currentReading) || 0,
+        previous: 0,
+        mf: 1,
+        units: Number(currentReading) || 0,
+        cost: 0,
+        recordedBy: "Google Sheet Sync"
+      };
+
+      // 4. Neon DB मध्ये डेटा सेव्ह करणे
+      await putCampusState({
+        readings: [...currentState.readings, newReading]
+      });
+      
+      return res.status(200).json({ status: "success", message: "Block reading synced and saved to DB" });
     } catch (err) {
       console.error("Block sync error:", err);
       return res.status(500).json({ error: "Failed to sync block data" });
