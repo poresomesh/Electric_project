@@ -162,11 +162,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 // ✅ ब्लॉक-स्पेसिफिक डेटा फिल्टर करण्यासाठी फक्त 'readings' वापर
 const filteredReadings = useMemo(() => {
-  let list = readings; // <-- 'readings' हा आधीच तुझ्या ब्लॉकचा आहे
+  let list = Array.isArray(readings) ? readings : []; // <--- हा सुरक्षित चेक लाव
 
   if (isAdmin && selectedBlockFilter !== 'ALL') {
     const targetNorm = normalizeBlock(selectedBlockFilter);
-    list = list.filter((r) => normalizeBlock(r.blockId) === targetNorm || r.blockId === selectedBlockFilter);
+    list = list.filter((r) => r && (normalizeBlock(r.blockId) === targetNorm || r.blockId === selectedBlockFilter));
   }
 
   if (selectedDateFilter === 'TODAY') {
