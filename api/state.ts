@@ -22,34 +22,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? ((typeof req.body === 'string' ? JSON.parse(req.body) : req.body) as Record<string, unknown>)
       : undefined;
 
-  // गुगल शीटमधून ब्लॉक-वाईज डेटा आल्यावर इथे डेटाबेसमध्ये सेव्ह होईल
+  // Google Sheet kadhun block-wise sync request aalyavar ithe handle hoil
   if (method === 'POST' && incoming && incoming.type === 'block_reading_sync') {
     try {
       const { date, blockName, currentReading } = incoming;
       
       console.log(`Syncing -> Block: ${blockName}, Date: ${date}, Reading: ${currentReading}`);
       
-      // 1. सध्याचा स्टेट लोड करणे
+      // 1. Sadhyacha state load karne
       const currentState = await getCampusState();
       
-      // 2. ब्लॉकच्या नावावरून योग्य blockId शोधणे
-      const targetBlock = currentState.blocks.find(b => b.name.toLowerCase() === String(blockName).toLowerCase());
-      const blockId = targetBlock ? targetBlock.id : 'blk-a';
-      
-      // 3. नवीन रीडिंग तयार करणे
-      const newReading = {
-        id: `sheet-${date}-${blockId}-${Date.now()}`,
-        blockId: blockId,
-        date: String(date),
-        current: Number(currentReading) || 0,
-        previous: 0,
-        mf: 1,
-        units: Number(currentReading) || 0,
-        cost: 0,
-        recordedBy: "Google Sheet Sync"
-      };
+      // 2. Jar Google Sheet kadhun pura readingObject ala asel toh direct vapara, nahitar navin banva
+      let newReading = incoming.readingObject as any;
 
-      // 4. Neon DB मध्ये डेटा सेव्ह करणे
+      if (!newReading) {
+        const targetBlock = currentState.blocks.find(b => b.name.toLowerCase() === String(blockName).toLowerCase());
+        const blockId = targetBlock ? targetBlock.id : 'blk-a';
+        const numVal = Number(currentReading) || 0;
+
+        // Negative values la block karne sathi safety check
+        if (numVal <= 0) {
+          return res.status(200).json({ status: "ignored", message: "Negative or zero reading ignored" });
+        }
+
+        newReading = {
+          id: `sheet-${date}-${blockId}-${Date.now()}`,
+          blockId: blockId,
+          date: String(date),
+          current: numVal,
+          previous: 0,
+          mf: 1,
+          units: numVal,
+          cost: numVal * 12.5,
+          recordedBy: "Google Sheet Sync"
+        };
+      }
+
+      // 3. Neon DB madhe readings array madhe navin entry append karne
       await putCampusState({
         readings: [...currentState.readings, newReading]
       });
