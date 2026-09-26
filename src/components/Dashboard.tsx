@@ -1043,14 +1043,14 @@ const kpis = useMemo(() => {
                           }`}
                           title={`(${reading.currentReading} - ${reading.previousReading}) × ${reading.multiplier || 1} = ${reading.unitsConsumed} kWh`}
                         >
-                          +{reading.unitsConsumed.toLocaleString()} kWh
+                          +{(reading.unitsConsumed ?? 0).toLocaleString()} kWh
                         </span>
                       </td>
 
                       <td className={`py-3 px-4 text-right font-mono font-semibold whitespace-nowrap ${
                         isDarkMode ? 'text-amber-400' : 'text-amber-700'
                       }`}>
-                        {tariff.currencySymbol} {cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {tariff.currencySymbol} {(cost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
 
                       <td className="py-3 px-4 whitespace-nowrap">
