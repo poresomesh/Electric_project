@@ -1014,11 +1014,11 @@ const kpis = useMemo(() => {
                       </td>
 
                       <td className={`py-3 px-4 text-right font-mono ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {reading.previousReading.toLocaleString()} kWh
+                        {((reading.previousReading ?? reading.previous) || 0).toLocaleString()} kWh
                       </td>
 
                       <td className={`py-3 px-4 text-right font-mono font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                        {reading.currentReading.toLocaleString()} kWh
+                        {((reading.currentReading ?? reading.current) || 0).toLocaleString()} kWh
                       </td>
 
                       <td className="py-3 px-3 text-center whitespace-nowrap">
