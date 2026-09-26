@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { Plugin, Connect } from 'vite';
-import { deleteNotification, deleteUser, getCampusState, handleCampusStateRequest, storageKind } from './campusStore.ts';
+import { deleteNotification, deleteUser, getCampusState, handleCampusStateRequest, putCampusState, storageKind } from './campusStore.ts';
 import { authenticate, createSession, destroySession, getSessionUser, sessionCookie, clearedSessionCookie, publicUser, userFromPasswordRecord } from './auth.ts';
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -19,7 +19,7 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body));
 }
 
-// API हँडलर फंक्शन (दोन्ही dev आणि production साठी)
+// API हँडलर फंक्शन (dev आणि production दोन्हीसाठी)
 function attachApiMiddleware(middlewares: Connect.Server) {
   middlewares.use(async (req, res, next) => {
     const url = req.url?.split('?')[0] || '';
@@ -122,6 +122,50 @@ function attachApiMiddleware(middlewares: Connect.Server) {
         return;
       }
     }
+
+    // Google Sheet kadhun block-wise sync request aalyavar ithe handle hoil
+    if (method === 'POST' && incoming && incoming.type === 'block_reading_sync') {
+      try {
+        const { date, blockName, currentReading } = incoming;
+        const currentState = await getCampusState();
+        let newReading = incoming.readingObject as any;
+
+        if (!newReading) {
+          const targetBlock = currentState.blocks.find(b => b.name.toLowerCase() === String(blockName).toLowerCase());
+          const blockId = targetBlock ? targetBlock.id : 'blk-a';
+          const numVal = Number(currentReading) || 0;
+
+          if (numVal <= 0) {
+            sendJson(res, 200, { status: "ignored", message: "Negative or zero reading ignored" });
+            return;
+          }
+
+          newReading = {
+            id: `sheet-${date}-${blockId}-${Date.now()}`,
+            blockId: blockId,
+            date: String(date),
+            current: numVal,
+            previous: 0,
+            mf: 1,
+            units: numVal,
+            cost: numVal * 12.5,
+            recordedBy: "Google Sheet Sync"
+          };
+        }
+
+        await putCampusState({
+          readings: [...currentState.readings, newReading]
+        });
+
+        sendJson(res, 200, { status: "success", message: "Block reading synced and saved to DB" });
+        return;
+      } catch (err) {
+        console.error("Block sync error:", err);
+        sendJson(res, 500, { error: "Failed to sync block data" });
+        return;
+      }
+    }
+
     const result = await handleCampusStateRequest(method, getSessionUser(req.headers.cookie), incoming);
     sendJson(res, result.status, result.body);
   });
@@ -130,11 +174,9 @@ function attachApiMiddleware(middlewares: Connect.Server) {
 export function viteCampusApiPlugin(): Plugin {
   return {
     name: 'voltwise-campus-api',
-    // dev server साठी
     configureServer(server) {
       attachApiMiddleware(server.middlewares);
     },
-    // Render/Production preview server साठी (महत्त्वाचा बदल)
     configurePreviewServer(server) {
       attachApiMiddleware(server.middlewares);
     },
